@@ -352,10 +352,21 @@ class Handler(SimpleHTTPRequestHandler):
                              400 if isinstance(exc, market.DataSourceError) else 500)
 
 
+def _warm_cache() -> None:
+    """启动后台预热：梅森板块接口首次拉取约 20s，预热后首屏不再干等。"""
+    for name, fn in (("overview", ms.overview), ("sectors", ms.sectors)):
+        try:
+            fn()
+            print(f"[warm] {name} ok", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warm] {name} 跳过：{type(exc).__name__}", flush=True)
+
+
 def main():
     port = int(os.environ.get("PORT", "8777"))
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"看板已启动: http://127.0.0.1:{port}", flush=True)
+    threading.Thread(target=_warm_cache, daemon=True).start()
     srv.serve_forever()
 
 
