@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>溜溜交易手册</title>
+<link rel="stylesheet" href="/style.css">
+<script>window.onerror=function(m){document.title="JSERR: "+m;};window.addEventListener("unhandledrejection",function(e){document.title="JSREJ: "+e.reason;});</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">溜</div>
+    <div>
+      <h1>溜溜交易手册</h1>
+      <p>量价时空（九大模型） · 梅森体系（时机/买点/纪律）</p>
+    </div>
+  </div>
+  <div class="search">
+    <input id="codeInput" placeholder="输入代码，如 600519 / 300750 / sh601127" autocomplete="off">
+    <button class="primary" id="goBtn">分析</button>
+    <button class="ghost" id="addBtn" title="加入自选">+ 自选</button>
+  </div>
+  <div class="sysswitch" id="sysSwitch">
+    <button class="active" data-sys="lf">量价时空</button>
+    <button data-sys="ms">梅森体系</button>
+  </div>
+  <div class="status" id="status">就绪</div>
+</header>
+
+<nav class="tabs" id="tabsLf">
+  <button class="active" data-view="analysis">单票分析</button>
+  <button data-view="watchlist">自选对比</button>
+  <button data-view="positions">持仓管理</button>
+  <button data-view="system">体系说明书</button>
+</nav>
+
+<main>
+  <!-- ============ 单票分析 ============ -->
+  <section class="view active" id="view-analysis">
+    <div class="hero" id="hero">
+      <div>
+        <div class="title" id="heroName">—</div>
+        <div class="code" id="heroCode">输入代码开始</div>
+      </div>
+      <div id="heroBadge"></div>
+      <div class="price mono" id="heroPrice">—</div>
+      <div class="chg mono" id="heroChg"></div>
+    </div>
+
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <h3>K 线与移动平均带 <span class="tag">前复权 · 日线 · 近 120 根</span></h3>
+          <div id="chartWrap">
+            <canvas id="chart"></canvas>
+            <div id="tooltip"></div>
+          </div>
+          <div class="legend">
+            <span><i style="background:#f6c85f"></i>MA5</span>
+            <span><i style="background:#e879f9"></i>MA8</span>
+            <span><i style="background:#60a5fa"></i>MA13</span>
+            <span><i style="background:#34d399"></i>MA55</span>
+            <span><i style="background:#fb923c"></i>MA60</span>
+            <span><i style="background:#a78bfa"></i>MA65</span>
+            <span><i style="background:#f04438"></i>涨</span>
+            <span><i style="background:#12b76a"></i>跌</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>交易计划 <span class="tag">按体系口径生成 · 不是投资建议</span></h3>
+          <div class="plan-hero">
+            <span class="big" id="planDecision">—</span>
+            <span class="badge dim" id="planGrade">—</span>
+            <span class="badge dim" id="planLevel">—</span>
+            <span class="empty-note" id="planReason" style="margin-left:auto;font-size:11.5px"></span>
+          </div>
+          <div class="plan-rows" id="planRows"></div>
+          <div style="margin-top:12px" class="veto" id="planNote"></div>
+        </div>
+
+        <div class="card">
+          <h3>近期异动清单 <span class="tag">体系只解读异动，中性 K 线不看</span></h3>
+          <div id="eventList" class="empty-note">—</div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card">
+          <h3>位置与趋势 <span class="tag">ma-band</span></h3>
+          <div class="kv"><span>均线排列</span><span id="kvTrend">—</span></div>
+          <div class="kv"><span>位置判定</span><span id="kvPos">—</span></div>
+          <div class="kv"><span>距 250 日高 / 低</span><span id="kvRange" class="mono">—</span></div>
+          <div class="kv"><span>5日/20日均量</span><span id="kvVol" class="mono">—</span></div>
+          <div class="gauge">
+            <div class="track"><div class="needle" id="biasNeedle" data-v="—"></div></div>
+            <div class="marks">
+              <span style="left:0%">-60</span>
+              <span style="left:18.75%">-30</span>
+              <span style="left:25%">-20</span>
+              <span style="left:37.5%">0</span>
+              <span style="left:56.25%">+30</span>
+              <span style="left:68.75%">+50</span>
+              <span style="left:100%">+100</span>
+            </div>
+          </div>
+          <div class="kv" style="border:none"><span>BIAS60</span><span id="kvBias" class="mono">—</span></div>
+        </div>
+
+        <div class="card">
+          <h3>九大模型扫描 <span class="tag">6 项要素打分</span></h3>
+          <div class="models" id="modelGrid"></div>
+        </div>
+
+        <div class="card" id="checksCard">
+          <h3>命中模型要素逐条核对</h3>
+          <div class="checks" id="checksList"><span class="empty-note">暂无命中模型</span></div>
+        </div>
+
+        <div class="card">
+          <h3>否决项与共振</h3>
+          <div class="veto" id="vetoBox"><span class="empty-note">—</span></div>
+          <div style="margin-top:12px" class="kv"><span>模型组合</span><span id="kvCombo" style="font-weight:500">—</span></div>
+          <div class="kv"><span>异动条数（近 60 日）</span><span id="kvEvents" class="mono">—</span></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============ 自选对比 ============ -->
+  <section class="view" id="view-watchlist">
+    <div class="card">
+      <h3>自选池 · 同板块选强 <span class="tag">按「可交易性 &gt; 模型等级 &gt; 得分 &gt; 活跃度」排序</span></h3>
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <input id="wlInput" placeholder="批量添加，逗号分隔：600519,000858" style="flex:1;min-width:240px;background:var(--bg2);border:1px solid var(--line);color:var(--txt);padding:9px 13px;border-radius:9px">
+        <button id="wlAddBtn">加入</button>
+        <button id="wlRefresh">刷新</button>
+      </div>
+      <div style="overflow-x:auto"><table class="wl" id="wlTable"></table></div>
+      <p class="empty-note" style="margin-top:12px">点击任意行进入单票分析；「—」表示该票未触发任何模型。</p>
+    </div>
+  </section>
+
+  <!-- ============ 持仓管理 ============ -->
+  <section class="view" id="view-positions">
+    <div class="card">
+      <h3>持仓盯盘 <span class="tag">开仓即锁定止损 · 每日对照离场纪律</span></h3>
+      <div class="pos-summary" id="posSummary"></div>
+      <div class="pos-form">
+        <input id="posCode" placeholder="代码 600519">
+        <input id="posCost" placeholder="成本价" inputmode="decimal">
+        <input id="posWeight" placeholder="仓位 %（可选）" inputmode="decimal">
+        <button class="primary" id="posAdd">建仓记录</button>
+      </div>
+      <div style="overflow-x:auto;margin-top:14px"><table class="wl" id="posTable"></table></div>
+      <p class="empty-note" style="margin-top:14px">
+        离场优先级：<b>止损触发</b>（现价 ≤ 开仓锁定的止损位）→ <b>破位清仓</b>（跌破 MA55）→
+        <b>减仓预警</b>（跌破 MA13）→ <b>止盈区</b>（BIAS60 ≥ +30%）→ <b>模型转弱</b>（当前无模型命中）。
+        单票仓位超过 20% 会标红，这是双十法则的硬上限。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 体系说明 ============ -->
+  <section class="view sys" id="view-system">
+    <div class="sys-grid">
+      <div class="card">
+        <h4>一、先定位置，再谈形态</h4>
+        <ul>
+          <li><b>低位</b>：距 250 日最高点跌幅 ≥ 40%，或长期横盘平台下沿 → 反转区</li>
+          <li><b>中继</b>：上升趋势中回踩中期均线组 → 加仓区</li>
+          <li><b>高位</b>：距 250 日最低点涨幅 ≥ 100% 且 BIAS60 &gt; 30% → 出货风险</li>
+        </ul>
+        <p>位置不对，图形再像也不是模型。这是体系的<b>第一否决项</b>。</p>
+      </div>
+
+      <div class="card">
+        <h4>二、移动平均带：战略层</h4>
+        <ul>
+          <li>短期组 <b>5 / 8 / 13</b>，中期组 <b>55 / 60 / 65</b>，中枢 60 日线</li>
+          <li>斜率 30—45° 健康，60—80° 加速，走平转弱</li>
+        </ul>
+        <table style="margin-top:10px">
+          <tr><th>排列</th><th>判定口径</th><th>含义</th><th>操作</th></tr>
+          <tr><td><b>多头排列</b></td><td>短期组 3 根全部在中期组之上（完全分层）</td><td>短期成本高于中期成本，回踩有承接</td><td>持股区 / 顺势</td></tr>
+          <tr><td><b>空头排列</b></td><td>短期组 3 根全部在中期组之下（完全分层）</td><td>中期套牢盘压制，反弹即解套抛压</td><td>远离，不接反弹</td></tr>
+          <tr><td><b>缠绕 / 粘合</b></td><td>两组重叠或穿插，未形成完整上下分层</td><td>筹码换手，方向尚未选择</td><td>观察区，不操作</td></tr>
+        </table>
+        <p style="margin-top:10px">判定用<b>严格口径</b>：短期组只要有一根还落在中期组区间内，就归「缠绕/粘合」，不算多头排列。</p>
+        <ul style="margin-top:8px">
+          <li><b>排列是快照，不是结论</b>：一根大阳或大阴就能改写，必须连看斜率</li>
+          <li><b>必须叠加位置</b>：低位多头 = 反转试仓；高位多头 = 只减不加；低位空头 = 末段等企稳；高位空头 = 破位清仓</li>
+          <li><b>缠绕 ≠ 粘合</b>：缠绕是带幅仍宽的来回拉锯；粘合是六根均线挤到一起，属<b>变盘前夜</b>——等一根放量 K 线选方向</li>
+          <li><b>它是「均线结构」这一票</b>：多头给分、缠绕降级（多出弱化版）、空头基本不给分，模型形态再像也判失效</li>
+        </ul>
+        <p>BIAS60 =（收盘 − MA60）/ MA60。负乖离 −20%～−30% 为第一类买点区；正乖离 +30%/+50%/+100% 分三级止盈。</p>
+      </div>
+
+      <div class="card">
+        <h4>三、三类买点与三类卖点</h4>
+        <table>
+          <tr><th>买点</th><th>触发</th><th>动作</th></tr>
+          <tr><td>乖离买点（一类）</td><td>加速下跌、BIAS60 进入 −20%～−30%</td><td>试仓</td></tr>
+          <tr><td>突破买点（二类）</td><td>放量中阳突破中期均线组</td><td>加仓</td></tr>
+          <tr><td>回踩买点（三类）</td><td>突破后回踩中期组不破、再放量</td><td>加仓</td></tr>
+        </table>
+        <p style="margin-top:10px">卖点：乖离极值分批 / 跌破短期组减仓 / 放量中阴跌破中期组清仓。三类买点不必全出现，出现越多仓位越重。</p>
+      </div>
+
+      <div class="card">
+        <h4>四、九大模型速查</h4>
+        <table>
+          <tr><th>模型</th><th>核心</th><th>最佳位置</th></tr>
+          <tr><td>① 上影反攻</td><td>涨停破板长上影洗盘 + 天量 + 回踩中阳</td><td>底部/顶部区间</td></tr>
+          <tr><td>② n式倍量双涨停</td><td>两次倍量涨停夹回撤，n 字对称</td><td>下跌末端</td></tr>
+          <tr><td>③ 串阳爬坡</td><td>&gt;7 连阳小步 + 末端大阳换手</td><td>转势初期</td></tr>
+          <tr><td>④ 探路尖兵</td><td>涨停进密集区 + 巨量 + 缩量修正二波</td><td>中继/突破前</td></tr>
+          <tr><td>⑤ 极值反转</td><td>跌停与涨停同位置对称</td><td>下跌末端</td></tr>
+          <tr><td>⑥ 一柱擎天</td><td>倍量涨停后沿短期组 30—45° 推进</td><td>趋势/题材龙头</td></tr>
+          <tr><td>⑦ 仙人指路</td><td>3 个月平台 + 历史级放量涨停突破</td><td>大级别底部</td></tr>
+          <tr><td>⑧ 筹码乖离修复</td><td>负乖离 ≥30% + 双峰真空带</td><td>中期下跌末端</td></tr>
+          <tr><td>⑨ 真空反转平台</td><td>平台破位跌不动 + 跳空涨停，缺口不补</td><td>下跌中继末端</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h4>五、仓位与止损（risk）</h4>
+        <ul>
+          <li><b>双十法则</b>：散户单票 ≤ 20%，组合 3—5 个板块，100 万以内持 3—5 只</li>
+          <li><b>分级</b>：A 级三要素齐备+主线+多头+共振；B 级部分满足；C 级只观察</li>
+          <li><b>建仓节奏</b>：试仓 1/3 → 突破加 1/3 → 回踩确认加 1/3</li>
+          <li><b>止损</b>：结构位（模型低点/缺口/平台/均线）与 −12% 静态止损<b>取先到者</b></li>
+          <li><b>禁止</b>：亏损摊平、无止损下单、用「再等等」代替纪律</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h4>六、六项要素打分口径</h4>
+        <p>每个模型固定核对 6 项：异动价 / 异动量 / 均线结构 / 位置 / 时间 / 无失效。</p>
+        <ul>
+          <li><b>6/6</b> → 标准版，可按买点建仓</li>
+          <li><b>4—5</b> → 弱化版，降仓或等确认</li>
+          <li><b>≤3</b> → 不成立，不做</li>
+        </ul>
+        <p style="margin-top:10px">本手册是<b>机械口径</b>实现：只覆盖可量化部分。筹码分布、题材级别、大盘环境需人工补充。</p>
+      </div>
+    </div>
+
+    <div class="foot">
+      数据来源：腾讯行情前复权日 K（本地拉取，不存库）。本页面是课程体系的纪律化工具，
+      所有输出均为「按该体系条件的判断」，<b>不构成投资建议</b>，不预测点位、不承诺收益。
+      模型检测为机械口径，失败率天然存在（体系原话：模型不是 100% 胜率）。
+    </div>
+  </section>
+
+  <!-- ============ 梅森交易体系 ============ -->
+  <div id="msRoot" class="hidden">
+    <nav class="tabs" id="msTabs">
+      <button class="active" data-ms="timing">大盘时机</button>
+      <button data-ms="sectors">主线板块</button>
+      <button data-ms="stock">个股位置</button>
+      <button data-ms="plan">交易计划</button>
+      <button data-ms="check">体系自检</button>
+      <span class="msstatus" id="msStatus">梅森体系</span>
+    </nav>
+
+    <section class="msview active" id="msview-timing">
+      <div id="msTimingBody"></div>
+    </section>
+
+    <section class="msview" id="msview-sectors">
+      <div id="msSectorsBody"></div>
+    </section>
+
+    <section class="msview" id="msview-stock">
+      <div class="card">
+        <h3>个股位置判断 <span class="tag">均线三态 · 三大买点 · 止损与仓位</span></h3>
+        <div class="mssearch">
+          <input id="msCode" placeholder="输入代码，如 601985 / 688172 / sh600519" autocomplete="off">
+          <button class="primary" id="msGoBtn">按体系判断</button>
+        </div>
+      </div>
+      <div id="msStockBody"></div>
+    </section>
+
+    <section class="msview" id="msview-plan">
+      <div id="msPlanBody"></div>
+    </section>
+
+    <section class="msview" id="msview-check">
+      <div id="msCheckBody"></div>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
+<script src="/ms.js"></script>
+</body>
+</html>

@@ -59,6 +59,7 @@ meisen-trading-system/
 ├── scripts/
 │   ├── ms_data.py            # 行情数据层（腾讯日K + 东财板块）
 │   └── ms_check.py           # 盘中触发器检查（否决线/买点/止损）
+├── dashboard/                # 网页看板（双体系：量价时空 + 梅森，零依赖）
 ├── plans/                    # 真实跑过的交易计划（示例）
 ├── tests/test_skill.py       # 离线结构校验
 ├── install-skill.sh / .ps1   # 安装到 ${DSH_HOME}/skills
@@ -86,7 +87,30 @@ powershell -ExecutionPolicy Bypass -File .\install-skill.ps1
 - 「按梅森体系写一份交易计划」
 - 「按梅森体系复盘这笔交易」
 
-## 四、跑一次完整流程
+## 四、网页看板（与量价时空共用）
+
+`dashboard/` 是一个零依赖（Python 标准库）的本地看板，**顶部可切换「量价时空 / 梅森体系」**——
+同一个应用里两套体系并存，梅森这边有 5 个页面：
+
+| 页面 | 内容 |
+|---|---|
+| 大盘时机 | 三大指数均线三态、三天不新低、否决线 → 防守/试探/进攻 |
+| 主线板块 | 板块今日/5日/60日、涨跌家数、领涨股（按 5 日强度排序） |
+| 个股位置 | 均线三态、距 MA20 分区、三大买点信号、止损与建议仓位、60 日走势 |
+| 交易计划 | 解析 `plans/*.md`，用实时价校验触发/等待/已破止损 |
+| 体系自检 | 16 项下单前清单，勾选进度本地保存 |
+
+```bash
+cd dashboard
+bash start.sh            # http://127.0.0.1:8777
+PORT=9000 bash start.sh
+```
+
+深链：`/?sys=ms&view=timing`、`/?sys=ms&view=plan`、`/?sys=ms&view=stock&code=601985`
+
+> 同一份 `dashboard/` 也随 `liuliu-trading-system` 仓库发布，两个仓库内容一致。
+
+## 五、跑一次完整流程
 
 **1）看时机（大盘）**
 
@@ -127,7 +151,7 @@ python3 scripts/ms_check.py
 
 > 完整示例见 [`plans/2026-11-25-交易计划.md`](plans/2026-11-25-交易计划.md)。
 
-## 五、开发
+## 六、开发
 
 ```bash
 make test      # 离线结构校验（与 CI 相同）
@@ -137,7 +161,7 @@ make install   # 安装到 DSH skill 目录
 
 CI：`.github/workflows/ci.yml`，push / PR 时运行 `python tests/test_skill.py`（Python 3.11/3.12，无网络依赖）。
 
-## 六、数据源
+## 七、数据源
 
 | 用途 | 接口 | 说明 |
 |---|---|---|
@@ -147,14 +171,14 @@ CI：`.github/workflows/ci.yml`，push / PR 时运行 `python tests/test_skill.p
 
 > 数据仅用于学习与研究；交易决策与风险由使用者自行承担。
 
-## 七、免责声明
+## 八、免责声明
 
 - 本项目是**个人学习笔记 + 工程化封装**。方法论与观点来源于第三方课程（梅森/巴叔《梅家圈》系统课）与课程官方思维导图，
   相关内容著作权归原作者所有；笔记仅供个人学习研究，**不得商用或再分发**（详见 `LICENSE`）。
 - 所有规则均为概率工具，不是收益保证；**不构成任何投资建议**。
 - 实盘前请用自己的资金属性、风险承受能力重新校准仓位与止损参数。
 
-## 八、发布到 GitHub
+## 九、发布到 GitHub
 
 本机 `git` 不可用，仓库自带两条发布路径（远端已设为 `git@github.com:lyuqy29/meisen-trading-system.git`）。
 
@@ -179,7 +203,7 @@ python3 scripts/publish_github.py --dry-run
 python3 scripts/publish_github.py    # 自动建仓 + 推送完整提交历史
 ```
 
-## 九、Roadmap
+## 十、Roadmap
 
 - [ ] `ms_data.py` 板块成分股查询（东财限流兜底：本地缓存）
 - [ ] `ms_check.py` 从 `plans/*.md` 解析计划参数，免手写阈值
