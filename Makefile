@@ -2,7 +2,7 @@ SHELL := /bin/bash
 PY ?= python3
 SKILL_DIR ?= $(HOME)/.dsh/skills/meisen-trading-system
 
-.PHONY: help test check index sectors stock install uninstall clean
+.PHONY: help test check index sectors stock install uninstall clean git-status
 
 help:
 	@echo "make test      离线结构校验（CI 同款）"
@@ -33,6 +33,9 @@ install:
 
 uninstall:
 	bash install-skill.sh --uninstall
+
+git-status:
+	$(PY) scripts/git.py status
 
 clean:
 	rm -rf __pycache__ scripts/__pycache__ tests/__pycache__ .pytest_cache

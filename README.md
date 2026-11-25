@@ -122,6 +122,9 @@ python3 scripts/ms_check.py
 
 交易结束后按 `assets/review.md` 填四层归因（时机 / 方向 / 位置 / 执行）。
 
+> ⚠️ 本机 `git` 命令不可用（Xcode CLT 缺失）。仓库自带了基于 dulwich 的替代：
+> `python3 scripts/git.py status|log|commit "msg"|remote <url>|push`。
+
 > 完整示例见 [`plans/2026-11-25-交易计划.md`](plans/2026-11-25-交易计划.md)。
 
 ## 五、开发
