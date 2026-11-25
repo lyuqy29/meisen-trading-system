@@ -156,17 +156,27 @@ CI：`.github/workflows/ci.yml`，push / PR 时运行 `python tests/test_skill.p
 
 ## 八、发布到 GitHub
 
-本机 `git` 不可用，仓库自带两条发布路径：
+本机 `git` 不可用，仓库自带两条发布路径（远端已设为 `git@github.com:lyuqy29/meisen-trading-system.git`）。
+
+### 方式一：Deploy Key（当前采用）
+
+前置两步（一次性）：
+
+1. 在 https://github.com/new 新建空仓库 `meisen-trading-system`（**不要**勾 README / .gitignore / license）
+2. 把 `../.deploy/id_ed25519.pub` 的内容加到 https://github.com/settings/keys
+
+然后：
 
 ```bash
-# 方式一：Token（推荐）
-export GH_TOKEN=ghp_xxx        # classic token 勾 repo
-python3 scripts/publish_github.py --dry-run
-python3 scripts/publish_github.py
+bash scripts/push_ssh.sh        # 自动检查认证 → 推 main 分支
+```
 
-# 方式二：SSH Deploy Key
-python3 scripts/git.py remote git@github.com:lyuqy29/meisen-trading-system.git
-python3 scripts/git.py push
+### 方式二：Token
+
+```bash
+export GH_TOKEN=ghp_xxx         # classic token 勾 repo
+python3 scripts/publish_github.py --dry-run
+python3 scripts/publish_github.py    # 自动建仓 + 推送完整提交历史
 ```
 
 ## 九、Roadmap
