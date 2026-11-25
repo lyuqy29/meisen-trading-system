@@ -11,7 +11,8 @@ fi
 PY="${PY:-python3}"
 export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 echo "检查 SSH 认证…"
-if ! $GIT_SSH_COMMAND -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+msg=$($GIT_SSH_COMMAND -T git@github.com 2>&1 || true)
+if ! printf '%s' "$msg" | grep -q "successfully authenticated"; then
   echo "❌ 公钥尚未授权。请把下面这段加到 https://github.com/settings/keys ：" >&2
   cat "$KEY.pub" >&2
   exit 2
