@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 结构校验（离线）
+        run: python tests/test_skill.py
+      - name: 脚本语法检查
+        run: |
+          python -m py_compile scripts/ms_data.py scripts/ms_check.py
+          echo "syntax ok"

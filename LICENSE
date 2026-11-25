@@ -1,0 +1,31 @@
+MIT License
+
+Copyright (c) 2026 quyang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+注意：本许可证适用于本仓库的**代码部分**（`scripts/`、`tests/`、`install-skill.*`、
+`Makefile`、CI 配置等）。
+
+`references/`、`assets/`、`plans/` 中的内容是**个人学习笔记**，
+其方法论与观点来源于第三方课程（梅森/巴叔《梅家圈》系统课）及课程官方思维导图，
+相关内容的著作权归原作者所有。本仓库不对课程原始内容主张任何权利，
+这些笔记仅供个人学习研究使用，**不得用于商业用途或再分发**。
