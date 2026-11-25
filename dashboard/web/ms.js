@@ -9,6 +9,7 @@
   const esc = (s) => String(s === undefined || s === null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+  const LF_TAB_KEY = 'lf_last_tab';
   const ST = { view: 'timing', ov: null, sec: null, plan: null, stock: null, code: localStorage.getItem('ms_code') || '601985' };
 
   async function api(path, opts) {
@@ -30,7 +31,7 @@
     $('tabsLf').classList.toggle('hidden', toMs);
     document.querySelectorAll('main > section.view').forEach((s) => {
       if (toMs) { s.classList.add('hidden'); s.classList.remove('active'); }
-      else if (s.id === 'view-analysis') { s.classList.remove('hidden'); s.classList.add('active'); }
+      else { s.classList.remove('hidden'); s.classList.remove('active'); }   // 全部解除隐藏，避免切回后空白
     });
     document.body.dataset.sys = sys;
     if (toMs) {
@@ -39,7 +40,15 @@
       if (!ST.ov) loadOverview();
     } else {
       localStorage.setItem('ms_sys', 'lf');
-      if (window.switchTab) window.switchTab('analysis');
+      // 回到切走前的那个页签（默认单票分析），并把画布按当前宽度重绘
+      let tab = localStorage.getItem(LF_TAB_KEY) || 'analysis';
+      try { if (STATE.tab && document.getElementById('view-' + STATE.tab)) tab = STATE.tab; } catch (e) { /* noop */ }
+      if (!document.getElementById('view-' + tab)) tab = 'analysis';
+      if (window.switchTab) window.switchTab(tab);
+      else document.getElementById('view-' + tab).classList.add('active');
+      if (ST.tab && typeof STATE !== 'undefined' && STATE.data && tab === 'analysis' && window.drawChart) {
+        requestAnimationFrame(() => { try { window.drawChart(STATE.data.ctx); } catch (e) { /* noop */ } });
+      }
     }
   }
 
@@ -340,12 +349,16 @@
     });
   }
 
+  window.msSetSys = setSys;   // 便于调试与冒烟测试
+
   /* ------------------------------------------------ 初始化 */
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#sysSwitch button').forEach((b) =>
       b.addEventListener('click', () => setSys(b.dataset.sys)));
     document.querySelectorAll('#msTabs button').forEach((b) =>
       b.addEventListener('click', () => showMs(b.dataset.ms)));
+    document.querySelectorAll('#tabsLf button').forEach((b) =>
+      b.addEventListener('click', () => localStorage.setItem(LF_TAB_KEY, b.dataset.view)));
     $('msGoBtn').addEventListener('click', () => analyzeStock($('msCode').value.trim()));
     $('msCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('msGoBtn').click(); });
     $('msCode').value = ST.code;

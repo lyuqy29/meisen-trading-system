@@ -1,0 +1,30 @@
+<!DOCTYPE html><meta charset="utf-8">
+<title>smoke</title>
+<style>body{background:#0b1020;color:#cfe;font:13px/1.6 -apple-system,monospace;padding:12px}
+iframe{width:1200px;height:400px;border:1px solid #345}
+pre{white-space:pre-wrap}</style>
+<iframe id="f" src="/?sys=ms&view=timing&v=3"></iframe>
+<pre id="out">running…</pre>
+<script>
+const f = document.getElementById('f'), out = document.getElementById('out');
+const log = (s) => { out.textContent += "\n" + s; };
+f.addEventListener('load', async () => {
+  const w = f.contentWindow, d = f.contentDocument;
+  await new Promise((r) => setTimeout(r, 2500));            // 等梅森首屏
+  log("sys 初始: " + (w.document.body.dataset.sys || '(空)'));
+  w.msSetSys('lf');                                         // 梅森 → 量价时空
+  await new Promise((r) => setTimeout(r, 1200));
+  log("切换后 sys: " + w.document.body.dataset.sys);
+  const tabs = [...d.querySelectorAll('#tabsLf button')];
+  for (const b of tabs) {
+    b.click();
+    await new Promise((r) => setTimeout(r, 350));
+    const s = d.getElementById('view-' + b.dataset.view);
+    const all = [...d.querySelectorAll('main > section.view')].map((x) => x.id.replace('view-','') + ':' + x.className.replace('view','').trim()).join(' | ');
+    log(`${b.dataset.view.padEnd(10)} 高度=${s.offsetHeight} 全部=[${all}]`);
+  }
+  log("msRoot hidden: " + d.getElementById('msRoot').classList.contains('hidden'));
+  log("DONE");
+  document.title = "SMOKE-OK";
+});
+</script>
