@@ -354,6 +354,7 @@
           <div><b><span class="pill ${scoreTone}">适合度 ${d.score}/3</span></b><span>波动+量能+趋势</span></div>
         </div>
       </div>
+      ${posHtml(d)}
       <div class="card">
         <h3>分时走势 <span class="tag">白=价格 黄=均价 柱=分钟量 紫=上证涨跌</span></h3>
         <canvas id="msTChart" height="320" style="width:100%"></canvas>
@@ -381,6 +382,81 @@
         </div>
       </div>`;
     requestAnimationFrame(() => drawIntraday(d));
+    bindTCalc(d);
+  }
+
+  function posHtml(d) {
+    const p = d.position;
+    if (!p) {
+      return `<div class="card"><h3>持仓打通 <span class="tag">做T需要底仓</span></h3>
+        <div class="empty-note">这只票不在持仓表里。先到「量价时空 → 持仓管理」建仓（填成本/仓位/股数），
+        做T页才能算「T 后成本」与「可用T仓」。</div></div>`;
+    }
+    const loss = (p.pl_pct || 0) < 0;
+    const warn = loss
+      ? '<b class="down">浮亏中：按 04/06 只允许「当日平T」，禁止做T式加仓（亏损标的不加仓）</b>'
+      : (d.state === '多头排列'
+          ? '<b class="up">浮盈 + 日线多头：满足做T式加仓的仓位前提（还需当日T盈利≥2%）</b>'
+          : `<b class="warn">日线${esc(d.state)}：只做小仓T，不加仓</b>`);
+    return `<div class="card">
+      <h3>持仓 + T 计划 <span class="tag">底仓 × T 仓比例 → T 后成本</span></h3>
+      <div class="msstats">
+        <div><b class="mono">${fmt(p.cost)}</b><span>底仓成本</span></div>
+        <div><b class="mono">${p.shares || '—'}</b><span>持股数</span></div>
+        <div><b class="mono ${(p.pl_pct || 0) >= 0 ? 'up' : 'down'}">${p.pl_pct === null ? '—' : (p.pl_pct >= 0 ? '+' : '') + p.pl_pct + '%'}</b><span>浮动盈亏</span></div>
+        <div><b class="mono">${fmt(p.entry_stop)}</b><span>止损位（锁定）</span></div>
+        <div><b class="mono ${(p.dist_stop || 0) >= 0 ? 'up' : 'down'}">${p.dist_stop === null ? '—' : p.dist_stop + '%'}</b><span>距止损</span></div>
+        <div><b>${esc(p.weight || '—')}%</b><span>仓位</span></div>
+      </div>
+      <div class="mscalc">
+        <label>T 仓比例
+          <select id="msTRatio">
+            <option value="0.1">10%（保守）</option>
+            <option value="0.2" selected>20%（常规）</option>
+            <option value="0.3">30%（激进）</option>
+            <option value="0.5">50%（半仓滚动）</option>
+          </select></label>
+        <label>T 买价 <input id="msTBuy" class="mono" value="${fmt(d.last)}"></label>
+        <label>T 卖价 <input id="msTSell" class="mono" value="${fmt(d.last * 1.012)}"></label>
+      </div>
+      <div class="mskv" style="margin-top:10px">
+        <div><span>可T股数（100 股整数倍）</span><b class="mono" id="msTShares">—</b></div>
+        <div><span>占用资金</span><b class="mono" id="msTAmt">—</b></div>
+        <div><span>毛收益（卖-买，未计费用）</span><b class="mono" id="msTProfit">—</b></div>
+        <div><span>情形 A：当日平T → 摊薄后成本</span><b class="mono" id="msTCostA">—</b></div>
+        <div><span>情形 B：转加仓 → 新成本 / 新仓位</span><b class="mono" id="msTCostB">—</b></div>
+      </div>
+      <div class="empty-note" style="margin-top:10px">${warn}</div>
+      <div class="empty-note">规则：当日 T 成 → 可留作加仓（需盈利≥2% 且日线多头）；当日 T 错 → 无论盈亏都平掉；
+      单笔不超过 3 分钟（11-intraday.md）。</div>
+    </div>`;
+  }
+
+  function bindTCalc(d) {
+    const p = d.position;
+    if (!p || !p.shares) return;
+    const calc = () => {
+      const ratio = parseFloat($('msTRatio').value);
+      const buy = parseFloat($('msTBuy').value);
+      const sell = parseFloat($('msTSell').value);
+      if (!(buy > 0) || !(sell > 0)) return;
+      const lots = Math.floor(p.shares * ratio / 100) * 100;
+      if (lots <= 0) { $('msTShares').textContent = '底仓太小，做T不经济'; return; }
+      const amt = lots * buy;
+      const profit = lots * (sell - buy);
+      const costA = p.cost - profit / p.shares;
+      const costB = (p.cost * p.shares + buy * lots) / (p.shares + lots);
+      const pctA = (costA / p.cost - 1) * 100;
+      const pctB = (costB / p.cost - 1) * 100;
+      $('msTShares').textContent = lots.toLocaleString() + ' 股';
+      $('msTAmt').textContent = (amt / 1e4).toFixed(2) + ' 万';
+      $('msTProfit').textContent = (profit >= 0 ? '+' : '') + profit.toFixed(0) + ' 元（'
+        + (profit / amt * 100).toFixed(2) + '%）';
+      $('msTCostA').innerHTML = `${costA.toFixed(3)} <em class="${pctA <= 0 ? 'up' : 'down'}">${pctA.toFixed(2)}%</em>`;
+      $('msTCostB').innerHTML = `${costB.toFixed(3)} <em class="${pctB <= 0 ? 'up' : 'down'}">${pctB.toFixed(2)}%</em> / ${p.shares + lots} 股`;
+    };
+    ['msTRatio', 'msTBuy', 'msTSell'].forEach((id) => $(id).addEventListener('input', calc));
+    calc();
   }
 
   function drawIntraday(d) {

@@ -37,6 +37,7 @@ _cache: dict[str, tuple[float, dict]] = {}
 _NAMES: dict[str, str] = {}
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SECTORS_CACHE = os.path.join(DATA, "ms_sectors.json")
+POSITIONS = os.path.join(DATA, "positions.json")
 
 
 class DataError(RuntimeError):
@@ -455,6 +456,20 @@ def _minute(sym: str) -> dict:
     return out
 
 
+def _position_of(code6: str) -> dict | None:
+    """从看板持仓表里找这只票（两套体系共用 data/positions.json）。"""
+    try:
+        with open(POSITIONS, encoding="utf-8") as f:
+            rows = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    for r in rows if isinstance(rows, list) else []:
+        c = str(r.get("code", "")).strip().lower()
+        if c[2:] if c[:2] in ("sh", "sz", "bj") else c == code6:
+            return r
+    return None
+
+
 def intraday(code: str) -> dict:
     sym = symbol_of(code)
     key = f"min:{sym}"
@@ -587,8 +602,26 @@ def intraday(code: str) -> dict:
             early = {"stock_pct": round(early_chg, 2), "index_pct": i_low,
                      "ok": bool(early_chg <= -0.5 and (i_low is not None and i_low <= -0.5))}
 
+        pos = _position_of(sym[2:])
+        position = None
+        if pos:
+            try:
+                cost = float(pos.get("cost") or 0)
+                shares = float(pos.get("shares") or 0) if pos.get("shares") else 0
+                stop = float(pos.get("entry_stop") or cost * 0.88)
+                position = {
+                    "cost": round(cost, 3), "shares": int(shares), "weight": pos.get("weight"),
+                    "entry_stop": round(stop, 2), "opened_at": pos.get("opened_at"),
+                    "entry_model": pos.get("entry_model"),
+                    "pl_pct": round((pts[-1]["price"] / cost - 1) * 100, 2) if cost else None,
+                    "dist_stop": round((stop / pts[-1]["price"] - 1) * 100, 2) if stop else None,
+                }
+            except (TypeError, ValueError):
+                position = None
+
         return {
             "code": sym[2:], "name": m["name"], "date": m["date"], "prev_close": prev,
+            "position": position,
             "last": pts[-1]["price"], "chg": round((pts[-1]["price"] / prev - 1) * 100, 2) if prev else 0,
             "high": high, "low": low, "amp": round(amp, 2), "amount_yi": amount_yi,
             "state": state, "dist_ma20": d20, "score": score, "tags": tags,
