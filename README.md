@@ -154,7 +154,22 @@ CI：`.github/workflows/ci.yml`，push / PR 时运行 `python tests/test_skill.p
 - 所有规则均为概率工具，不是收益保证；**不构成任何投资建议**。
 - 实盘前请用自己的资金属性、风险承受能力重新校准仓位与止损参数。
 
-## 八、Roadmap
+## 八、发布到 GitHub
+
+本机 `git` 不可用，仓库自带两条发布路径：
+
+```bash
+# 方式一：Token（推荐）
+export GH_TOKEN=ghp_xxx        # classic token 勾 repo
+python3 scripts/publish_github.py --dry-run
+python3 scripts/publish_github.py
+
+# 方式二：SSH Deploy Key
+python3 scripts/git.py remote git@github.com:lyuqy29/meisen-trading-system.git
+python3 scripts/git.py push
+```
+
+## 九、Roadmap
 
 - [ ] `ms_data.py` 板块成分股查询（东财限流兜底：本地缓存）
 - [ ] `ms_check.py` 从 `plans/*.md` 解析计划参数，免手写阈值
