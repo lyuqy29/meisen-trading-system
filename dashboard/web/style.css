@@ -313,3 +313,15 @@ body[data-sys="ms"] .status { display: none; }
 .mscalc input, .mscalc select { background: #0f1526; border: 1px solid #2a3350; color: #dbe4ff;
   border-radius: 8px; padding: 7px 10px; font-size: 13px; min-width: 120px; }
 .mscalc input { max-width: 140px; }
+
+.mstags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.mstags label { flex-direction: row; align-items: center; gap: 4px; background: #0f1526;
+  border: 1px solid #2a3350; border-radius: 20px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+.mstags input { margin: 0; }
+.mstags label.on { border-color: #3b82f6; color: #bfdbfe; }
+.msbeats { display: grid; gap: 8px; font-size: 12.5px; }
+.msbeats label { display: flex; align-items: center; gap: 8px; background: #0f1526;
+  border: 1px solid #2a3350; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+.mstable .pill { font-size: 11px; }
+.rev-preview { background: #0b1020; border: 1px solid #232b45; border-radius: 8px; padding: 12px;
+  white-space: pre-wrap; font: 12px/1.7 ui-monospace, monospace; color: #cfe3ff; max-height: 320px; overflow: auto; }

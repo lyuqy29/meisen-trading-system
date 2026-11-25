@@ -60,6 +60,13 @@ http://127.0.0.1:8777/?tab=positions               # 量价时空：持仓管理
 | GET | `/api/ms/stock?code=` | 个股位置 |
 | GET | `/api/ms/intraday?code=` | 日内做T（分时/均价/大盘同步/信号） |
 | GET | `/api/ms/plan` | 交易计划 + 触发器状态 |
+| GET | `/api/ms/reviews` | 复盘列表 + 统计 |
+| POST | `/api/ms/review` | 新增 / 删除复盘 |
+| GET | `/api/ms/sentiment` | 市场情绪（涨停池） |
+| GET | `/api/ms/scan/top?index=` | 逃顶信号 |
+| GET | `/api/ms/scan/bottom?limit=` | 抄底扫描 |
+| GET | `/api/ms/superexpect?code=&date=` | 超预期判定 |
+| POST | `/api/ms/make-plan` | 生成交易计划并写入 plans/ |
 | GET | `/api/health` | 健康检查 |
 
 ## 数据源与降级
@@ -71,6 +78,8 @@ http://127.0.0.1:8777/?tab=positions               # 量价时空：持仓管理
 | 板块 K 线 | 东财 `push2his` | 当前网络下常被重置 → **20日/均线状态标注为「—」**，不伪造数据 |
 | 板块快照 | `dashboard/data/ms_sectors.json` | 接口失败时回退上次成功结果（界面标注「缓存」） |
 | 分时数据 | 腾讯 `appstock/app/minute/query` | 主板 cum_vol 单位为「手」、科创板/创业板为「股」，引擎按首行自动识别 |
+| 涨停/跌停池 | 东财 `push2ex` | `tc`=家数、`lbc`=连板；涨跌家数接口不可用，温度用指数涨跌+涨跌停家数+最高板合成 |
+| 日K 兜底 | 腾讯 ifzq → 新浪 → 腾讯 proxy | 单源被限流（HTTP 501/超时）时自动切换 |
 
 ## 做T怎么和持仓打通
 

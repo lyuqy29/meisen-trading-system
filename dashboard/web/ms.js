@@ -59,6 +59,7 @@
     if (view === 'sectors' && !ST.sec) loadSectors();
     if (view === 'plan' && !ST.plan) loadPlan();
     if (view === 'intraday' && !ST.min) analyzeIntraday(ST.code);
+    if (window.MSOnView) { try { window.MSOnView(view); } catch (e) { /* noop */ } }
     if (view === 'timing' && !ST.ov) loadOverview();
   }
 
@@ -589,6 +590,7 @@
   }
 
   window.msSetSys = setSys;   // 便于调试与冒烟测试
+  window.MS = { api, $, esc, fmt, pct, toast, state: ST, drawSpark };
 
   /* ------------------------------------------------ 初始化 */
   document.addEventListener('DOMContentLoaded', () => {

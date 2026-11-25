@@ -526,7 +526,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   await loadWatchlist();
-  await analyze(STATE.code);
+  // 直接看梅森页时跳过量价时空的自动分析（?sys=ms 或 ?nolf=1），避免被慢行情拖住
+  const skipLf = new URLSearchParams(location.search).get('sys') === 'ms'
+    || new URLSearchParams(location.search).get('nolf');
+  if (!skipLf) await analyze(STATE.code);
   const tabParam = new URLSearchParams(location.search).get('tab');
   if (tabParam) switchTab(tabParam);
   window.addEventListener('resize', () => { if (STATE.data) drawChart(STATE.data.ctx); });

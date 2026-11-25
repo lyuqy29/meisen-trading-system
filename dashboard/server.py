@@ -45,6 +45,14 @@ DEFAULT_WATCHLIST = ["600519", "300750", "002594", "601127", "600030"]
 GENERIC_ERROR = "这次没算出来，请稍后重试或换一个代码"
 
 
+def _fix_path(raw: str) -> str:
+    """http.server 把 path 按 latin-1 解码，中文参数会变乱码；这里还原成 utf-8。"""
+    try:
+        return raw.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return raw
+
+
 def user_error(exc: BaseException) -> str:
     """把异常翻译成可以直接展示给用户的文案。"""
     if isinstance(exc, market.DataSourceError):
@@ -226,7 +234,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._json({"ok": False, "error": msg}, status)
 
     def do_GET(self):
-        u = urlparse(self.path)
+        u = urlparse(_fix_path(self.path))
         q = parse_qs(u.query)
         try:
             if u.path == "/api/health":
@@ -263,6 +271,25 @@ class Handler(SimpleHTTPRequestHandler):
                 if not code:
                     return self._err("缺少 code 参数")
                 return self._json({"ok": True, **ms.stock(code)})
+            if u.path == "/api/ms/reviews":
+                return self._json({"ok": True, **ms.reviews()})
+            if u.path == "/api/ms/sentiment":
+                return self._json({"ok": True, **ms.sentiment()})
+            if u.path == "/api/ms/scan/bottom":
+                try:
+                    limit = int((q.get("limit") or ["30"])[0])
+                except ValueError:
+                    limit = 30
+                return self._json({"ok": True, **ms.bottom_scan(max(10, min(limit, 100)))})
+            if u.path == "/api/ms/scan/top":
+                name = (q.get("index") or ["上证"])[0]
+                return self._json({"ok": True, **ms.top_signal(name)})
+            if u.path == "/api/ms/superexpect":
+                code = (q.get("code") or [""])[0].strip()
+                date = (q.get("date") or [""])[0].strip()
+                if not code or not date:
+                    return self._err("缺少 code 或 date 参数")
+                return self._json({"ok": True, **ms.superexpect(code, date)})
             if u.path == "/api/ms/intraday":
                 code = (q.get("code") or [""])[0].strip()
                 if not code:
@@ -277,8 +304,38 @@ class Handler(SimpleHTTPRequestHandler):
                              400 if isinstance(exc, market.DataSourceError) else 500)
         return super().do_GET()
 
+    def _read_json(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}")
+        if not isinstance(body, dict):
+            raise ValueError("body")
+        return body
+
     def do_POST(self):
-        u = urlparse(self.path)
+        u = urlparse(_fix_path(self.path))
+        if u.path == "/api/ms/review":
+            try:
+                body = self._read_json()
+                action = body.get("action", "add")
+                if action == "del":
+                    return self._json(ms.del_review(int(body.get("id") or 0)))
+                return self._json(ms.add_review(body))
+            except Exception as exc:  # noqa: BLE001
+                return self._err(user_error(exc), 400)
+        if u.path == "/api/ms/make-plan":
+            try:
+                body = self._read_json()
+                return self._json({"ok": True, **ms.make_plan(
+                    str(body.get("code") or ""),
+                    float(body.get("account") or 1_000_000),
+                    float(body.get("weight") or 15),
+                    float(body["trigger"]) if body.get("trigger") else None,
+                    float(body["stop"]) if body.get("stop") else None,
+                    str(body.get("kind") or "回踩"),
+                    str(body.get("note") or ""),
+                )})
+            except Exception as exc:  # noqa: BLE001
+                return self._err(user_error(exc), 400)
         if u.path not in ("/api/watchlist", "/api/positions"):
             return self._err("未知接口", 404)
         try:
@@ -359,7 +416,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def _warm_cache() -> None:
     """启动后台预热：梅森板块接口首次拉取约 20s，预热后首屏不再干等。"""
-    for name, fn in (("overview", ms.overview), ("sectors", ms.sectors)):
+    for name, fn in (("overview", ms.overview), ("sectors", ms.sectors), ("sentiment", ms.sentiment)):
         try:
             fn()
             print(f"[warm] {name} ok", flush=True)

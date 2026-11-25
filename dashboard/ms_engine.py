@@ -24,8 +24,14 @@ import urllib.request
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36")
 TX = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={sym},day,,,{n},qfq"
+SINA = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData"
+        "?symbol={sym}&scale=240&ma=no&datalen={n}")
+PROXY = ("https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
+         "?param={sym},day,,,{n},qfq&_var=kline_dayqfq")
 EM_LIST = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={pz}&po=1&np=1&fltt=2&invt=2"
            "&fid=f3&fs={fs}&fields=f12,f14,f3,f104,f105,f109,f24,f62,f128")
+EM_LIST2 = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={pz}&po=1&np=1&fltt=2&invt=2"
+            "&fid={fid}&fs={fs}&fields={fields}")
 EM_K = ("https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}&klt=101&fqt=1"
         "&beg=0&end=20500101&lmt={n}&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57")
 
@@ -44,16 +50,32 @@ class DataError(RuntimeError):
     pass
 
 
-def _get(url: str, ref: str = "https://gu.qq.com/", tries: int = 3) -> dict:
+def _get(url: str, ref: str = "https://gu.qq.com/", tries: int = 3, timeout: int = 20) -> dict:
     last: Exception | None = None
     for i in range(tries):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": ref})
-            return json.loads(urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore"))
+            return json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8", "ignore"))
         except Exception as exc:  # noqa: BLE001
             last = exc
             time.sleep(0.8 * (i + 1))
     raise DataError(f"行情获取失败（{type(last).__name__}），请稍后重试")
+
+
+def _em_list(fs: str, fields: str, pz: int = 100, fid: str = "f3") -> list[dict]:
+    d = _get(EM_LIST2.format(pz=pz, fid=fid, fs=fs, fields=fields),
+             "https://quote.eastmoney.com/", tries=3)
+    return (d.get("data") or {}).get("diff") or []
+
+
+# 东财列表不可用时的兜底股票池（成交活跃、覆盖面广）
+FALLBACK_UNIVERSE = [
+    "600519", "300750", "601318", "600036", "601985", "688981", "688347", "688172",
+    "600900", "601288", "601988", "601398", "600030", "000858", "002594", "601127",
+    "600276", "603259", "002415", "300059", "300124", "601012", "600438", "002466",
+    "601899", "600547", "000630", "600111", "002460", "300274", "688111", "688041",
+    "000001", "600000", "601166", "601658", "601088", "600028", "601857", "600585",
+]
 
 
 def _cached(key: str, fn, ttl: int = _TTL):
@@ -79,17 +101,45 @@ def symbol_of(code: str) -> str:
     raise DataError("代码格式不对，试试 6 位代码，例如 600519")
 
 
-def kline(sym: str, n: int = 130) -> list[dict]:
-    d = _get(TX.format(sym=sym, n=n))
-    node = (d.get("data") or {}).get(sym) or {}
-    rows = node.get("qfqday") or node.get("day") or []
-    if not rows:
-        raise DataError("没有拿到 K 线数据")
-    qt = (node.get("qt") or {}).get(sym) or []
-    if len(qt) > 1 and qt[1]:
-        _NAMES[sym] = str(qt[1])
-    return [{"date": r[0], "open": float(r[1]), "close": float(r[2]),
-             "high": float(r[3]), "low": float(r[4]), "vol": float(r[5])} for r in rows]
+def kline(sym: str, n: int = 130, tries: int = 3, timeout: int = 20) -> list[dict]:
+    """日K：腾讯 ifzq → 新浪 → 腾讯 proxy 三级兜底（单源被限流时仍能出数）。"""
+    errors = []
+    # 1) 腾讯 ifzq（最快）
+    try:
+        d = _get(TX.format(sym=sym, n=n), tries=tries, timeout=timeout)
+        node = (d.get("data") or {}).get(sym) or {}
+        rows = node.get("qfqday") or node.get("day") or []
+        if rows:
+            qt = (node.get("qt") or {}).get(sym) or []
+            if len(qt) > 1 and qt[1]:
+                _NAMES[sym] = str(qt[1])
+            return [{"date": r[0], "open": float(r[1]), "close": float(r[2]),
+                     "high": float(r[3]), "low": float(r[4]), "vol": float(r[5])} for r in rows]
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"ifzq:{type(exc).__name__}")
+    # 2) 新浪
+    try:
+        d = _get(SINA.format(sym=sym, n=n), "https://finance.sina.com.cn/", tries=1, timeout=timeout)
+        if isinstance(d, list) and d:
+            return [{"date": r["day"], "open": float(r["open"]), "close": float(r["close"]),
+                     "high": float(r["high"]), "low": float(r["low"]),
+                     "vol": float(r.get("volume") or 0)} for r in d]
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"sina:{type(exc).__name__}")
+    # 3) 腾讯 proxy（慢，但通常可用）
+    try:
+        raw = urllib.request.urlopen(urllib.request.Request(
+            PROXY.format(sym=sym, n=n), headers={"User-Agent": UA, "Referer": "https://gu.qq.com/"}),
+            timeout=max(timeout, 30)).read().decode("utf-8", "ignore")
+        d = json.loads(raw.split("=", 1)[1] if raw.startswith("kline_dayqfq=") else raw)
+        node = (d.get("data") or {}).get(sym) or {}
+        rows = node.get("qfqday") or node.get("day") or []
+        if rows:
+            return [{"date": r[0], "open": float(r[1]), "close": float(r[2]),
+                     "high": float(r[3]), "low": float(r[4]), "vol": float(r[5])} for r in rows]
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"proxy:{type(exc).__name__}")
+    raise DataError("行情源都被限流了（" + ", ".join(errors) + "），请稍后重试")
 
 
 def _ma(vals: list[float], n: int) -> float | None:
@@ -632,3 +682,264 @@ def intraday(code: str) -> dict:
             "signals": dedup[-40:],
         }
     return _cached(key, build, ttl=60)
+
+
+# ---------------------------------------------------------------- 复盘（A1/A2）
+REVIEWS = os.path.join(DATA, "reviews.json")
+TAGS = ["时机-追高", "时机-逆势", "位置-接刀", "纪律-不止损",
+        "纪律-亏损加仓", "仓位-超限", "仓位-大赚变小赚", "方向-跟风当龙头"]
+LAYERS = ["时机", "方向", "位置", "执行"]
+
+
+def reviews() -> dict:
+    try:
+        with open(REVIEWS, encoding="utf-8") as f:
+            rows = json.load(f)
+        rows = rows if isinstance(rows, list) else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        rows = []
+    rows = sorted(rows, key=lambda r: (r.get("date") or "", r.get("id") or 0), reverse=True)
+    closed = [r for r in rows if r.get("pl_pct") not in (None, "")]
+    win = sum(1 for r in closed if float(r["pl_pct"]) > 0)
+    by_tag: dict[str, int] = {}
+    by_layer = {L: {"对": 0, "错": 0} for L in LAYERS}
+    by_month: dict[str, dict] = {}
+    for r in rows:
+        for t in r.get("tags") or []:
+            by_tag[t] = by_tag.get(t, 0) + 1
+        for L in LAYERS:
+            v = (r.get("layers") or {}).get(L)
+            if v in ("对", "错"):
+                by_layer[L][v] += 1
+        m = (r.get("date") or "")[:7]
+        if m:
+            b = by_month.setdefault(m, {"n": 0, "win": 0, "sum": 0.0})
+            b["n"] += 1
+            if r.get("pl_pct") not in (None, ""):
+                b["sum"] += float(r["pl_pct"])
+                if float(r["pl_pct"]) > 0:
+                    b["win"] += 1
+    stats = {
+        "total": len(rows), "closed": len(closed),
+        "win_rate": round(win / len(closed) * 100, 1) if closed else None,
+        "avg_pl": round(sum(float(r["pl_pct"]) for r in closed) / len(closed), 2) if closed else None,
+        "by_tag": sorted(({"tag": k, "n": v} for k, v in by_tag.items()), key=lambda x: -x["n"]),
+        "by_layer": by_layer,
+        "by_month": [{"month": k, **v, "avg": round(v["sum"] / v["n"], 2) if v["n"] else 0}
+                     for k, v in sorted(by_month.items(), reverse=True)][:6],
+        "tags": TAGS, "layers": LAYERS,
+    }
+    return {"rows": rows, "stats": stats}
+
+
+def add_review(body: dict) -> dict:
+    rows = reviews()["rows"]
+    body = dict(body)
+    body["id"] = int(time.time() * 1000)
+    body["created"] = time.strftime("%Y-%m-%d %H:%M")
+    rows.append(body)
+    os.makedirs(DATA, exist_ok=True)
+    with open(REVIEWS, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False, indent=2)
+    return {"ok": True, "id": body["id"]}
+
+
+def del_review(rid: int) -> dict:
+    rows = [r for r in reviews()["rows"] if int(r.get("id") or 0) != int(rid)]
+    with open(REVIEWS, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False, indent=2)
+    return {"ok": True, "left": len(rows)}
+
+
+# ---------------------------------------------------------------- 市场情绪（E3）
+UT = "7eea3edcaed734bea9cbfc24409ed989"
+
+
+def _pool(kind: str) -> dict:
+    """涨停/跌停池：东财 push2ex，tc=家数，lbc=连板数。"""
+    url = (f"https://push2ex.eastmoney.com/getTopic{kind}Pool?ut={UT}&dpt=wz.ztzt"
+           f"&Pageindex=0&pagesize=100&sort=fbt%3Aasc&date={time.strftime('%Y%m%d')}")
+    try:
+        d = _get(url, "https://quote.eastmoney.com/", tries=1)
+    except DataError:
+        return {"tc": None, "max_board": None, "top": []}
+    data = d.get("data") or {}
+    items = data.get("pool") or []
+    boards = [i.get("lbc") or 0 for i in items]
+    top = [{"name": i.get("n"), "board": i.get("lbc"), "industry": i.get("hybk")}
+           for i in sorted(items, key=lambda x: -(x.get("lbc") or 0))[:5]]
+    return {"tc": data.get("tc"), "max_board": max(boards) if boards else 0, "top": top}
+
+
+def sentiment() -> dict:
+    def build():
+        import concurrent.futures as cf
+        with cf.ThreadPoolExecutor(max_workers=2) as ex:
+            zt, dt = ex.submit(_pool, "ZT"), ex.submit(_pool, "DT")
+            zt, dt = zt.result(), dt.result()
+        ov = overview()
+        sh = ov["indices"].get("上证") or {}
+        chg = sh.get("ret1")
+        lu, ld = zt.get("tc") or 0, dt.get("tc") or 0
+        mb = zt.get("max_board") or 0
+        temp = 50 + (chg or 0) * 8 + (lu - ld) * 0.6 + (mb - 3) * 3
+        temp = max(0, min(100, round(temp)))
+        level = "过热" if temp >= 80 else "偏热" if temp >= 60 else "中性" if temp >= 40 else "偏冷" if temp >= 25 else "冰点"
+        return {"limit_up": lu, "limit_down": ld, "max_board": mb,
+                "zt_top": zt.get("top") or [], "dt_top": dt.get("top") or [],
+                "index_chg": chg, "index_state": sh.get("state"),
+                "temp": temp, "level": level,
+                "asof": time.strftime("%m-%d %H:%M"),
+                "note": "涨跌家数接口在当前网络下不可用，温度用「指数涨跌 + 涨停/跌停家数 + 最高连板」合成"}
+    return _cached("sentiment", build, ttl=300)
+
+
+# ---------------------------------------------------------------- 逃顶信号（E2）
+def top_signal(name: str = "上证") -> dict:
+    sym = INDEX.get(name)
+    if not sym:
+        raise DataError(f"未知指数: {name}")
+    rows = None
+    for attempt in range(3):
+        try:
+            rows = kline(sym, 130, tries=2, timeout=12)
+            break
+        except DataError:
+            if attempt == 2:
+                raise
+            time.sleep(1.2)
+    s = summarize(rows)
+    vols = [r["vol"] for r in rows]
+    v5 = sum(vols[-5:]) / 5
+    v20 = sum(vols[-20:]) / 20
+    sig = []
+    if s["close"] >= s["high20"] * 0.995 and v5 < v20 * 0.9:
+        sig.append({"kind": "量价背离", "tone": "warn",
+                    "text": f"指数接近 20 日高点，但 5 日均量只有 20 日的 {v5 / v20 * 100:.0f}% → 量能收敛"})
+    if s["dist_ma20"] and s["dist_ma20"] > 5 and (s["ret5"] or 0) > 5:
+        sig.append({"kind": "短期过热", "tone": "warn",
+                    "text": f"距 MA20 +{s['dist_ma20']}%，5 日 +{s['ret5']}% → 上涨势能消耗过快"})
+    if s["close"] < (s["ma20"] or 0):
+        sig.append({"kind": "均线破位", "tone": "bad",
+                    "text": f"已跌破 MA20（{s['ma20']}），按 10-ma-trend 应减仓防守"})
+    if (s["ret5"] or 0) < -3:
+        sig.append({"kind": "短期走弱", "tone": "bad", "text": f"5 日 {s['ret5']}%，短期趋势转弱"})
+    if not sig:
+        sig.append({"kind": "无顶部信号", "tone": "good", "text": "未见量价背离/过热/破位，按趋势持有"})
+    verdict = "减仓" if any(x["tone"] == "bad" for x in sig) else \
+              "警惕" if any(x["tone"] == "warn" for x in sig) else "持有"
+    return {"index": name, "date": s["date"], "close": s["close"], "state": s["state"],
+            "ret5": s["ret5"], "ret20": s["ret20"], "dist_ma20": s["dist_ma20"],
+            "vol5_vs_20": round(v5 / v20 * 100, 0) if v20 else None,
+            "signals": sig, "verdict": verdict}
+
+
+# ---------------------------------------------------------------- 抄底扫描（E1）
+def bottom_scan(limit: int = 60) -> dict:
+    import concurrent.futures as cf
+
+    def build():
+        source = "成交额榜"
+        try:
+            items = _em_list("m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23", "f12,f14,f3,f6",
+                             pz=max(20, min(limit, 100)), fid="f6")
+        except DataError:
+            items = []
+        if not items:
+            source = "内置活跃池（东财列表不可用，降级）"
+            items = [{"f12": c, "f14": _NAMES.get(symbol_of(c), c), "f3": None} for c in FALLBACK_UNIVERSE]
+        cands = []
+        def one(it):
+            code = str(it.get("f12") or "")
+            if not code:
+                return None
+            try:
+                s = summarize(kline(symbol_of(code), 70, tries=1, timeout=8))
+            except Exception:  # noqa: BLE001
+                return None
+            if s["no_new_low"] >= 3 and s["state"] in ("多头排列", "均线粘合") and (s["ret20"] or 0) < 0:
+                return {"code": code, "name": _NAMES.get(symbol_of(code)) or it.get("f14"), "state": s["state"],
+                        "no_new_low": s["no_new_low"], "ret5": s["ret5"], "ret20": s["ret20"],
+                        "dist_ma20": s["dist_ma20"], "close": s["close"], "chg": it.get("f3")}
+            return None
+        with cf.ThreadPoolExecutor(max_workers=10) as ex:
+            for r in ex.map(one, items):
+                if r:
+                    cands.append(r)
+        cands.sort(key=lambda r: (-(r["no_new_low"] or 0), r["ret20"] or 0))
+        return {"rows": cands, "scanned": len(items), "source": source,
+                "asof": time.strftime("%m-%d %H:%M"), "limit": limit}
+    return _cached(f"bottom:{limit}", build, ttl=600)
+
+
+# ---------------------------------------------------------------- 超预期（D3）
+def superexpect(code: str, date: str) -> dict:
+    sym = symbol_of(code)
+    rows = kline(sym, 130)
+    target = date.replace("-", "")
+    idx = next((i for i, r in enumerate(rows) if r["date"].replace("-", "") >= target), None)
+    if idx is None or idx == 0:
+        raise DataError("消息日期超出 K 线范围")
+    base = rows[idx - 1]["close"]
+    d0 = rows[idx]
+    after = rows[idx + 1: idx + 4]
+    def pct(v):
+        return round((v / d0["close"] - 1) * 100, 2) if v else None
+    d1 = pct(after[0]["close"]) if len(after) > 0 else None
+    d3 = pct(after[2]["close"]) if len(after) > 2 else None
+    now = round((rows[-1]["close"] / d0["close"] - 1) * 100, 2)
+    day0 = round((d0["close"] / base - 1) * 100, 2)
+    s = summarize(rows)
+    if d3 is not None and d3 > 2 and rows[-1]["close"] > d0["high"]:
+        verdict, tone = "超预期（消息冷却后仍走强且创新高）", "good"
+    elif d3 is not None and d3 < -2:
+        verdict, tone = "低于预期（一日游）", "bad"
+    else:
+        verdict, tone = "一般（没有明显超预期）", "dim"
+    return {"code": sym[2:], "name": _NAMES.get(sym, sym), "date": d0["date"],
+            "msg_pct": day0, "d1": d1, "d3": d3, "now": now,
+            "state": s["state"], "dist_ma20": s["dist_ma20"],
+            "verdict": verdict, "tone": tone}
+
+
+# ---------------------------------------------------------------- 计划生成（F1）
+def make_plan(code: str, account: float = 1_000_000, weight: float = 15,
+              trigger: float | None = None, stop: float | None = None,
+              kind: str = "回踩", note: str = "") -> dict:
+    s = stock(code)
+    trigger = float(trigger or s["close"])
+    stop = float(stop or s["stop"])
+    shares = int(account * weight / 100 / trigger / 100) * 100
+    loss = round((trigger - stop) * shares, 0)
+    dd = plans_dir()
+    if not dd:
+        raise DataError("找不到 plans/ 目录")
+    day = time.strftime("%Y-%m-%d")
+    name = f"{day}-{s['code']}-计划.md"
+    path = os.path.join(dd, name)
+    lines = [
+        f"# 交易计划 · {day} · {s['name']}（{s['code']}）", "",
+        "> 由看板按梅森体系自动生成，口径见 `references/07-buy-points.md`、`04-stop-loss.md`。", "",
+        "## 一、位置判断", "",
+        f"- 均线三态：{s['state']}；距 MA20：{s['dist_ma20']}%；日内区间：{s['low20']}–{s['high20']}",
+        f"- 买点判定：{s['zone']}",
+        f"- 命中信号：{'、'.join(s['signals']) if s['signals'] else '无（当前不满足体系买点）'}", "",
+        "## 二、交易计划", "",
+        "| 标的 | 性质 | 触发价 | 仓位 | 金额 | 止损位 | 最大亏损 | 占账户 |",
+        "|---|---|---|---|---|---|---|---|",
+        f"| {s['name']} {s['code']} | {kind} | {trigger:.2f} | {weight:.0f}% | "
+        f"{account * weight / 100 / 1e4:.1f} 万 | {stop:.2f} | {loss:.0f} 元 | "
+        f"-{(trigger - stop) * shares / account * 100:.2f}% |", "",
+        "## 三、执行要点", "",
+        f"- 股数 {shares}，占用 {shares * trigger / 1e4:.2f} 万；结构位止损 {s['stop_struct']}，-15% 定线 {s['stop_line']}",
+        f"- 建议仓位：{s['cap']}（{s['cap_note']}）",
+        "- 盈利后再加仓；跌破止损无条件离场；当日 T 成可转加仓、T 错必平（11-intraday.md）",
+    ]
+    if note:
+        lines += ["", "## 四、备注", "", note]
+    md = "\n".join(lines) + "\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(md)
+    return {"ok": True, "file": name, "path": path, "markdown": md,
+            "row": {"code": s["code"], "name": s["name"], "trigger": trigger, "stop": stop,
+                    "shares": shares, "loss": loss, "weight": weight}}

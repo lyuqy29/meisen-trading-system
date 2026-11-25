@@ -15,6 +15,7 @@ help:
 
 test:
 	$(PY) tests/test_skill.py
+	$(PY) tests/test_ms_engine.py
 
 index:
 	$(PY) scripts/ms_data.py index

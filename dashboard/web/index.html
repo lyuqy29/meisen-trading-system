@@ -264,6 +264,9 @@
       <button data-ms="stock">个股位置</button>
       <button data-ms="intraday">日内做T</button>
       <button data-ms="plan">交易计划</button>
+      <button data-ms="review">复盘</button>
+      <button data-ms="news">消息</button>
+      <button data-ms="scan">扫描</button>
       <button data-ms="check">体系自检</button>
       <span class="msstatus" id="msStatus">梅森体系</span>
     </nav>
@@ -285,6 +288,18 @@
         </div>
       </div>
       <div id="msStockBody"></div>
+      <div class="card">
+        <h3>按体系生成交易计划 <span class="tag">写入 plans/ 后交易计划页自动校验</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>账户资金（万）<input id="mpAccount" class="mono" value="100"></label>
+          <label>仓位 %<input id="mpWeight" class="mono" value="15"></label>
+          <label>触发价<input id="mpTrigger" class="mono" placeholder="默认现价"></label>
+          <label>止损<input id="mpStop" class="mono" placeholder="默认结构位"></label>
+          <label>性质<select id="mpKind"><option>回踩</option><option>双杀</option><option>当弱不弱</option><option>形态</option><option>抄底</option></select></label>
+          <button class="primary" id="mpGo" style="align-self:flex-end">生成</button>
+        </div>
+        <div id="mpResult" style="margin-top:12px"></div>
+      </div>
     </section>
 
     <section class="msview" id="msview-intraday">
@@ -306,6 +321,101 @@
       <div id="msPlanBody"></div>
     </section>
 
+
+    <section class="msview" id="msview-review">
+      <div class="card">
+        <h3>写复盘 <span class="tag">四层归因 · 15-checklist / review.md</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>标的<input id="rvCode" placeholder="601985 或 中国核电"></label>
+          <label>日期<input id="rvDate" type="date"></label>
+          <label>买点类型
+            <select id="rvBuy">
+              <option>双杀</option><option>当弱不弱</option><option>回踩</option>
+              <option>形态</option><option>抄底(三天不新低)</option><option>追高</option>
+            </select></label>
+          <label>大盘状态
+            <select id="rvIdx"><option>上涨</option><option selected>下跌</option><option>震荡</option></select></label>
+          <label>板块阶段
+            <select id="rvPhase"><option>主升</option><option>盘整</option><option>回落</option><option>无板块</option></select></label>
+          <label>仓位 %<input id="rvWeight" class="mono" value="15"></label>
+          <label>结果 %<input id="rvPl" class="mono" placeholder="+3.5 / -2.1"></label>
+        </div>
+        <div class="mscalc" style="margin-top:10px">
+          <label>时机<select id="rvL0"><option>对</option><option>错</option></select></label>
+          <label>方向<select id="rvL1"><option>对</option><option>错</option></select></label>
+          <label>位置<select id="rvL2"><option>对</option><option>错</option></select></label>
+          <label>执行<select id="rvL3"><option>对</option><option>错</option></select></label>
+        </div>
+        <div class="mscalc" style="margin-top:10px">
+          <label style="flex:1">错误标签（多选）
+            <div id="rvTags" class="mstags"></div>
+          </label>
+        </div>
+        <div class="mscalc" style="margin-top:10px">
+          <label style="flex:1">一条可执行的教训
+            <input id="rvLesson" placeholder="例：跌破 5 日线当天必须减半仓" style="max-width:none"></label>
+        </div>
+        <div style="margin-top:12px"><button class="primary" id="rvSave">保存复盘</button></div>
+      </div>
+      <div id="rvStats"></div>
+      <div id="rvList"></div>
+    </section>
+
+    <section class="msview" id="msview-news">
+      <div class="card">
+        <h3>利好四象限 <span class="tag">信息差 × 影响力</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>信息差
+            <select id="nzGap"><option value="few">少数人知道</option><option value="all">大多数人都知道</option></select></label>
+          <label>影响力
+            <select id="nzImpact"><option value="eps">直接影响业绩</option><option value="mood">只影响行业情绪</option></select></label>
+          <label>消息日期<input id="nzDate" type="date"></label>
+        </div>
+        <div id="nzResult" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h3>BEAT 打分卡 <span class="tag">能否当主线做</span></h3>
+        <div class="msbeats">
+          <label><input type="checkbox" id="beatB" data-beat="B"> <b>B</b> 故事：产业趋势确定（Blueprints）</label>
+          <label><input type="checkbox" id="beatE" data-beat="E"> <b>E</b> 业绩：将要/正在爆发（EPS Jumping）</label>
+          <label><input type="checkbox" id="beatA" data-beat="A"> <b>A</b> 共识：卖方覆盖 + 图形走强</label>
+          <label><input type="checkbox" id="beatT" data-beat="T"> <b>T</b> 标的：一组票、容量够大</label>
+        </div>
+        <div id="beatResult" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h3>超预期监控 <span class="tag">消息冷却后还强吗</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>代码<input id="seCode" placeholder="601985"></label>
+          <label>消息日<input id="seDate" type="date"></label>
+          <button class="primary" id="seGo" style="align-self:flex-end">判定</button>
+        </div>
+        <div id="seResult" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <section class="msview" id="msview-scan">
+      <div id="scanSent"></div>
+      <div class="card">
+        <h3>逃顶信号 <span class="tag">量价背离 / 过热 / 破位</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>指数
+            <select id="tpIdx"><option>上证</option><option>深成</option><option>创业板</option><option>科创50</option><option>沪深300</option></select></label>
+          <button class="ghost" id="tpGo" style="align-self:flex-end">检查</button>
+        </div>
+        <div id="tpResult" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h3>抄底扫描 <span class="tag">三天不新低 + 均线不空头</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>扫描数量<input id="bsLimit" class="mono" value="30"></label>
+          <button class="primary" id="bsGo" style="align-self:flex-end">开始扫描</button>
+          <span class="empty-note" style="align-self:center">首次约 20–60 秒（受行情源限流影响）</span>
+        </div>
+        <div id="bsResult" style="margin-top:12px"></div>
+      </div>
+    </section>
+
     <section class="msview" id="msview-check">
       <div id="msCheckBody"></div>
     </section>
@@ -315,5 +425,6 @@
 <div class="toast" id="toast"></div>
 <script src="/app.js"></script>
 <script src="/ms.js"></script>
+<script src="/ms2.js"></script>
 </body>
 </html>
