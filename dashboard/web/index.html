@@ -262,6 +262,7 @@
       <button class="active" data-ms="timing">大盘时机</button>
       <button data-ms="sectors">主线板块</button>
       <button data-ms="stock">个股位置</button>
+      <button data-ms="intraday">日内做T</button>
       <button data-ms="plan">交易计划</button>
       <button data-ms="check">体系自检</button>
       <span class="msstatus" id="msStatus">梅森体系</span>
@@ -284,6 +285,21 @@
         </div>
       </div>
       <div id="msStockBody"></div>
+    </section>
+
+    <section class="msview" id="msview-intraday">
+      <div class="card">
+        <h3>日内做T <span class="tag">分时价格 / 均价 / 大盘同步 · 做T式加仓前置</span></h3>
+        <div class="mssearch">
+          <input id="msTCode" placeholder="输入代码，如 601985 / 688172" autocomplete="off">
+          <button class="primary" id="msTGo">分析日内</button>
+        </div>
+        <div class="empty-note" style="margin-top:10px">
+          口诀：上升趋势做多T，下跌趋势不做多T；早盘杀跌好做T，水下交易空间大；
+          大盘个股双杀T，独立杀跌勿多T；当日T成当加仓，当日T错也平仓。
+        </div>
+      </div>
+      <div id="msTBody"></div>
     </section>
 
     <section class="msview" id="msview-plan">

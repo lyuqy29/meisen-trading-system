@@ -263,6 +263,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if not code:
                     return self._err("缺少 code 参数")
                 return self._json({"ok": True, **ms.stock(code)})
+            if u.path == "/api/ms/intraday":
+                code = (q.get("code") or [""])[0].strip()
+                if not code:
+                    return self._err("缺少 code 参数")
+                return self._json({"ok": True, **ms.intraday(code)})
             if u.path == "/api/ms/plan":
                 return self._json(ms.plan())
             if u.path.startswith("/api/"):

@@ -19,6 +19,7 @@ PORT=9000 bash start.sh
 http://127.0.0.1:8777/?sys=ms&view=timing          # 大盘时机
 http://127.0.0.1:8777/?sys=ms&view=sectors         # 主线板块
 http://127.0.0.1:8777/?sys=ms&view=stock&code=601985
+http://127.0.0.1:8777/?sys=ms&view=intraday&code=601985  # 日内做T
 http://127.0.0.1:8777/?sys=ms&view=plan            # 交易计划触发器
 http://127.0.0.1:8777/?sys=ms&view=check           # 体系自检
 http://127.0.0.1:8777/?code=600519                 # 量价时空：单票分析
@@ -57,6 +58,7 @@ http://127.0.0.1:8777/?tab=positions               # 量价时空：持仓管理
 | GET | `/api/ms/overview` | 大盘时机 |
 | GET | `/api/ms/sectors` | 板块持续性 |
 | GET | `/api/ms/stock?code=` | 个股位置 |
+| GET | `/api/ms/intraday?code=` | 日内做T（分时/均价/大盘同步/信号） |
 | GET | `/api/ms/plan` | 交易计划 + 触发器状态 |
 | GET | `/api/health` | 健康检查 |
 
@@ -68,6 +70,7 @@ http://127.0.0.1:8777/?tab=positions               # 量价时空：持仓管理
 | 板块列表 | 东财 `push2.eastmoney.com` | 偶发限流，带重试 |
 | 板块 K 线 | 东财 `push2his` | 当前网络下常被重置 → **20日/均线状态标注为「—」**，不伪造数据 |
 | 板块快照 | `dashboard/data/ms_sectors.json` | 接口失败时回退上次成功结果（界面标注「缓存」） |
+| 分时数据 | 腾讯 `appstock/app/minute/query` | 主板 cum_vol 单位为「手」、科创板/创业板为「股」，引擎按首行自动识别 |
 
 ## 交易计划怎么接
 
