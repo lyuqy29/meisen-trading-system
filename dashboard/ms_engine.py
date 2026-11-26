@@ -847,7 +847,8 @@ def bottom_scan(limit: int = 60) -> dict:
             items = []
         if not items:
             source = "内置活跃池（东财列表不可用，降级）"
-            items = [{"f12": c, "f14": _NAMES.get(symbol_of(c), c), "f3": None} for c in FALLBACK_UNIVERSE]
+            items = [{"f12": c, "f14": _NAMES.get(symbol_of(c), c), "f3": None}
+                     for c in FALLBACK_UNIVERSE[:max(10, limit)]]
         cands = []
         def one(it):
             code = str(it.get("f12") or "")

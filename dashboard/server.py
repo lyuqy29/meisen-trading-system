@@ -298,7 +298,7 @@ class Handler(SimpleHTTPRequestHandler):
             if u.path == "/api/ms/plan":
                 return self._json(ms.plan())
             if u.path.startswith("/api/"):
-                return self._err("未知接口", 404)
+                return self._err(f"未知接口：{u.path}（若刚更新过代码，重启看板进程后再试）", 404)
         except Exception as exc:  # noqa: BLE001
             return self._err(user_error(exc),
                              400 if isinstance(exc, market.DataSourceError) else 500)
