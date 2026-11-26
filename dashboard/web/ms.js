@@ -69,7 +69,7 @@
     try {
       ST.ov = await api('/api/ms/overview');
       renderOverview();
-      $('msStatus').textContent = `梅森体系 · 数据 ${ST.ov.asof}`;
+      $('msStatus').textContent = `日内策略 · 数据 ${ST.ov.asof}`;
     } catch (e) {
       $('msTimingBody').innerHTML = `<div class="empty-note">取数失败：${esc(e.message)}</div>`;
     }
