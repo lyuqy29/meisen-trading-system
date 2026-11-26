@@ -4,8 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>溜溜交易手册</title>
-<meta name="ms-build" content="1126-2333">
+<meta name="ms-build" content="1126-2351">
 <link rel="stylesheet" href="/style.css">
+<script>/* 关闭的页面：plan=交易计划, news=消息（改这里即恢复） */
+document.documentElement.setAttribute('data-hide', 'plan news');</script>
+<style>
+html[data-hide~="plan"] #msTabs button[data-ms="plan"],
+html[data-hide~="plan"] #msview-plan,
+html[data-hide~="plan"] #msMakePlanCard,
+html[data-hide~="news"] #msTabs button[data-ms="news"],
+html[data-hide~="news"] #msview-news { display: none !important; }
+</style>
 <script>window.onerror=function(m){document.title="JSERR: "+m;};window.addEventListener("unhandledrejection",function(e){document.title="JSREJ: "+e.reason;});</script>
 </head>
 <body>

@@ -11,9 +11,12 @@
 
   const LF_TAB_KEY = 'lf_last_tab';
   // 功能开关：false = 隐藏该页签与该页相关入口（代码保留，改回 true 即恢复）
-  const FEATURES = { plan: false, news: false };   // false = 隐藏该页签（代码保留）
+  // 开关来源：index.html 里的 html[data-hide="plan news"]（CSS 同步隐藏，JS 只做深链兜底）
+  const HIDDEN = (document.documentElement.getAttribute('data-hide') || '')
+    .split(/\s+/).filter(Boolean);
+  const FEATURES = { plan: !HIDDEN.includes('plan'), news: !HIDDEN.includes('news') };
 
-  const BUILD = '1126-2349';
+  const BUILD = '1126-2351';
   const ST = { view: 'timing', ov: null, sec: null, plan: null, stock: null, code: localStorage.getItem('ms_code') || '601985' };
 
   async function api(path, opts) {
