@@ -280,6 +280,23 @@
       </tr></thead><tbody>`;
     for (const r of p.rows) {
       const t = { good: 'good', warn: 'warn', bad: 'bad', dim: 'dim' }[r.tone] || 'dim';
+      if (r.id && r.id === ST.editingPlan) {
+        const kinds = ['回踩', '双杀', '当弱不弱', '形态', '抄底', '条件单'];
+        html += `<tr class="msedit">
+          <td>${esc(r.name)} <span class="code">${esc(r.code)}</span></td>
+          <td><select data-e="kind">${kinds.map((k) => `<option ${k === r.kind ? 'selected' : ''}>${k}</option>`).join('')}</select></td>
+          <td><input data-e="trigger" class="mono" value="${esc(r.trigger_text || '')}" style="width:110px"></td>
+          <td class="mono">${fmt(r.close)}</td>
+          <td><input data-e="weight" class="mono" value="${esc(r.weight || '')}" style="width:64px"></td>
+          <td><input data-e="stop" class="mono" value="${r.stop ?? ''}" style="width:80px"></td>
+          <td><span class="pill ${t}">${esc(r.status || '—')}</span></td>
+          <td class="empty-note">${esc(r.source || '')}</td>
+          <td><button class="primary" data-e-save="${r.id}" style="padding:4px 10px;font-size:11.5px">保存</button>
+              <button class="ghost" data-e-cancel="1" style="padding:4px 10px;font-size:11.5px">取消</button></td>
+        </tr>
+        <tr class="msedit"><td colspan="9"><input data-e="note" placeholder="备注" value="${esc(r.note || '')}" style="width:100%;max-width:none"></td></tr>`;
+        continue;
+      }
       html += `<tr>
         <td>${esc(r.name)} <span class="code">${esc(r.code)}</span></td>
         <td>${esc(r.kind || '—')}</td>
@@ -289,7 +306,7 @@
         <td class="mono">${fmt(r.stop)}</td>
         <td><span class="pill ${t}">${esc(r.status || '—')}</span></td>
         <td class="empty-note">${esc(r.source || '')}</td>
-        <td><button class="ghost" data-plan-del="${r.id || ''}" data-plan-code="${esc(r.code)}">删</button></td>
+        <td>${r.id ? `<button class="ghost" data-plan-edit="${r.id}">编辑</button> ` : ''}<button class="ghost" data-plan-del="${r.id || ''}" data-plan-code="${esc(r.code)}">删</button></td>
       </tr>`;
     }
     html += `</tbody></table>
@@ -300,6 +317,32 @@
       <div style="margin-top:10px"><button class="ghost" id="msRefreshPlan">刷新</button></div></div>`;
     $('msPlanBody').innerHTML = html;
     $('msRefreshPlan').addEventListener('click', () => { ST.plan = null; loadPlan(); });
+    $('msPlanBody').querySelectorAll('button[data-plan-edit]').forEach((b) => b.addEventListener('click', () => {
+      ST.editingPlan = Number(b.dataset.planEdit);
+      renderPlan();
+    }));
+    const cancelBtn = $('msPlanBody').querySelector('button[data-e-cancel]');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => { ST.editingPlan = null; renderPlan(); });
+    const saveBtn = $('msPlanBody').querySelector('button[data-e-save]');
+    if (saveBtn) saveBtn.addEventListener('click', async () => {
+      const row = saveBtn.closest('tr');
+      const noteRow = row.nextElementSibling;
+      const val = (sel, root) => { const el = root.querySelector(sel); return el ? el.value : ''; };
+      const body = {
+        action: 'update', id: Number(saveBtn.dataset.eSave),
+        kind: val('[data-e="kind"]', row),
+        trigger: val('[data-e="trigger"]', row),
+        weight: val('[data-e="weight"]', row),
+        stop: val('[data-e="stop"]', row),
+        note: val('[data-e="note"]', noteRow || row),
+      };
+      try {
+        await api('/api/ms/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body) });
+        ST.editingPlan = null; ST.plan = null; loadPlan();
+        toast('已保存修改');
+      } catch (e) { toast('保存失败：' + e.message); }
+    });
     $('msPlanBody').querySelectorAll('button[data-plan-del]').forEach((b) => b.addEventListener('click', async () => {
       const id = b.dataset.planDel;
       const code = b.dataset.planCode;
@@ -408,6 +451,7 @@
     const sys = qp.get('sys') || localStorage.getItem('ms_sys');
     const view = qp.get('view');
     if (qp.get('code')) { ST.code = qp.get('code'); localStorage.setItem('ms_code', ST.code); }
+    if (qp.get('edit')) ST.editingPlan = Number(qp.get('edit'));   // 深链直达编辑态
     if (view) ST.view = view;
     if (sys === 'ms') setSys('ms');
     if (view === 'intraday') {

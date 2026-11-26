@@ -325,3 +325,11 @@ body[data-sys="ms"] .status { display: none; }
 .mstable .pill { font-size: 11px; }
 .rev-preview { background: #0b1020; border: 1px solid #232b45; border-radius: 8px; padding: 12px;
   white-space: pre-wrap; font: 12px/1.7 ui-monospace, monospace; color: #cfe3ff; max-height: 320px; overflow: auto; }
+
+/* 计划行内编辑 */
+.msedit input, .msedit select {
+  background: #0f1526; border: 1px solid #2a3350; color: #dbe4ff;
+  border-radius: 6px; padding: 5px 8px; font-size: 12px;
+}
+.msedit input:focus, .msedit select:focus { outline: none; border-color: #3b82f6; }
+tr.msedit td { background: rgba(59,130,246,.06); }

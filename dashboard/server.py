@@ -340,6 +340,8 @@ class Handler(SimpleHTTPRequestHandler):
                 action = body.get("action")
                 if action == "del":
                     return self._json(ms.del_plan(int(body.get("id") or 0)))
+                if action == "update":
+                    return self._json({"ok": True, "item": ms.update_plan(int(body.get("id") or 0), body)})
                 if action == "del-md":
                     return self._json(ms.del_plan_md(str(body.get("code") or "")))
                 return self._json({"ok": True, "item": ms.add_plan(body)})

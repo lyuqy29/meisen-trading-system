@@ -476,6 +476,50 @@ def _plan_status(code: str, trig: tuple[float, float] | None, stop: float | None
     return item
 
 
+def _parse_trig(raw) -> tuple[float, float] | None:
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        return (float(raw[0]), float(raw[1]))
+    if raw in (None, ""):
+        return None
+    s = str(raw).strip()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*[-–~]\s*(\d+(?:\.\d+)?)", s)
+    if m:
+        return (float(m.group(1)), float(m.group(2)))
+    v = float(re.sub(r"[^\d.]", "", s) or 0)
+    return (v, v) if v else None
+
+
+def update_plan(pid: int, body: dict) -> dict:
+    """编辑手动计划（kind/trigger/weight/stop/note）。"""
+    rows = _load_plans()
+    hit = None
+    for r in rows:
+        if int(r.get("id") or 0) == int(pid):
+            hit = r
+            break
+    if hit is None:
+        raise DataError("这条计划不存在（可能已被删除）")
+    if "kind" in body and body["kind"]:
+        hit["kind"] = body["kind"]
+    if "weight" in body:
+        hit["weight"] = body["weight"]
+    if "note" in body:
+        hit["note"] = body["note"] or ""
+    if "trigger" in body:
+        trig = _parse_trig(body.get("trigger"))
+        if trig:
+            hit["trigger"] = list(trig)
+            if hit.get("stop") and hit["stop"] >= trig[0]:
+                hit["stop"] = round(trig[0] * 0.92, 2)
+    if "stop" in body:
+        hit["stop"] = float(body["stop"]) if body.get("stop") else None
+    if hit.get("trigger") and hit.get("stop") and hit["stop"] >= hit["trigger"][0]:
+        hit["stop"] = round(hit["trigger"][0] * 0.92, 2)
+    hit["updated"] = time.strftime("%Y-%m-%d %H:%M")
+    _save_plans(rows)
+    return hit
+
+
 def add_plan(body: dict) -> dict:
     """手动添加一条计划（也供 F1 生成计划复用）。"""
     code = str(body.get("code") or "").strip()
@@ -483,14 +527,7 @@ def add_plan(body: dict) -> dict:
         raise DataError("缺少代码")
     sym = symbol_of(code)
     code6 = sym[2:]
-    trig = body.get("trigger")
-    if isinstance(trig, (list, tuple)) and len(trig) == 2:
-        trig = (float(trig[0]), float(trig[1]))
-    elif trig not in (None, ""):
-        v = float(trig)
-        trig = (v, v)
-    else:
-        trig = None
+    trig = _parse_trig(body.get("trigger"))
     stop = float(body["stop"]) if body.get("stop") else None
     if trig and stop and stop >= trig[0]:
         stop = round(trig[0] * 0.92, 2)   # 止损高于触发价没有意义，按 -8% 修正
