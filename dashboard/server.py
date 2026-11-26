@@ -245,6 +245,15 @@ class Handler(SimpleHTTPRequestHandler):
     def _err(self, msg, status=400):
         self._json({"ok": False, "error": msg}, status)
 
+    def end_headers(self):
+        """静态资源禁用启发式缓存：否则改完 JS 浏览器还拿旧的（表现为按钮消失）。"""
+        path = (self.path or "").lower()
+        if path in ("", "/") or path.endswith((".html", ".js", ".css")):
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
     def do_GET(self):
         u = urlparse(_fix_path(self.path))
         q = parse_qs(u.query)

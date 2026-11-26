@@ -10,6 +10,7 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   const LF_TAB_KEY = 'lf_last_tab';
+  const BUILD = '1126-2333';
   const ST = { view: 'timing', ov: null, sec: null, plan: null, stock: null, code: localStorage.getItem('ms_code') || '601985' };
 
   async function api(path, opts) {
@@ -69,7 +70,7 @@
     try {
       ST.ov = await api('/api/ms/overview');
       renderOverview();
-      $('msStatus').textContent = `日内策略 · 数据 ${ST.ov.asof}`;
+      $('msStatus').textContent = `日内策略 · 数据 ${ST.ov.asof} · ${BUILD}`;
     } catch (e) {
       $('msTimingBody').innerHTML = `<div class="empty-note">取数失败：${esc(e.message)}</div>`;
     }
