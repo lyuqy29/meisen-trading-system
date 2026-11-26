@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -35,6 +36,7 @@ DATA = os.path.join(HERE, "data")
 WATCHLIST = os.path.join(DATA, "watchlist.json")
 POSITIONS = os.path.join(DATA, "positions.json")
 CACHE_TTL = 90
+MAX_COMPARE = 30
 _cache = {}
 _cache_lock = threading.Lock()
 
@@ -83,12 +85,16 @@ def analyze(code: str) -> dict:
 
 
 def compare(codes: list[str]) -> dict:
-    rows = []
-    for c in codes:
+    """多票横向对比。并发拉取，最多 MAX_COMPARE 只，返回真实总数便于前端提示。"""
+    total = len(codes)
+    codes = codes[:MAX_COMPARE]
+    workers = max(1, min(8, len(codes)))
+
+    def one(c):
         try:
             p = analyze(c)
             ctx, plan = p["ctx"], p["result"]["plan"]
-            rows.append({
+            return {
                 "code": ctx["code"], "name": ctx["name"],
                 "close": ctx["close"], "chg": round(ctx["chg"], 2),
                 "trend": ctx["trend"], "position": ctx["position"],
@@ -99,9 +105,13 @@ def compare(codes: list[str]) -> dict:
                 "cap_now": plan["cap_now"],
                 "events": len(ctx["recent_events"]),
                 "score": p["result"]["models"][0]["score"] if p["result"]["models"] else 0,
-            })
+            }
         except Exception as exc:  # noqa: BLE001
-            rows.append({"code": c, "error": user_error(exc)})
+            return {"code": c, "error": user_error(exc)}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        rows = list(pool.map(one, codes))
+
     ok = [r for r in rows if "error" not in r]
 
     def rank(r):
@@ -111,7 +121,9 @@ def compare(codes: list[str]) -> dict:
         return (dec, lv, r["score"], r["events"])
     ok.sort(key=rank, reverse=True)
     rows = ok + [r for r in rows if "error" in r]
-    return {"ok": True, "rows": rows}
+    return {"ok": True, "rows": rows, "total": total,
+            "shown": len(rows), "limit": MAX_COMPARE,
+            "truncated": total > MAX_COMPARE}
 
 
 def load_watchlist() -> list[str]:
@@ -248,7 +260,7 @@ class Handler(SimpleHTTPRequestHandler):
                 codes = [x for x in (q.get("codes") or [""])[0].split(",") if x]
                 if not codes:
                     return self._err("缺少 codes 参数")
-                return self._json(compare(codes[:12]))
+                return self._json(compare(codes))
             if u.path == "/api/watchlist":
                 return self._json({"ok": True, "codes": load_watchlist()})
             if u.path == "/api/positions":
@@ -359,8 +371,15 @@ class Handler(SimpleHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 return self._err("请求内容格式有误", 400)
-            code = market.symbol_of(str(body.get("code", "")))[2:]
             action = body.get("action", "add")
+            raw_code = str(body.get("code", "")).strip()
+            try:
+                code = market.symbol_of(raw_code)[2:]
+            except market.DataSourceError:
+                # 删除时允许原样匹配，历史遗留的非法条目（如 12 位拼接码）也能清掉
+                if action != "remove" or not raw_code:
+                    raise
+                code = raw_code.lower()
         except market.DataSourceError as exc:
             return self._err(str(exc), 400)
         except (ValueError, TypeError):

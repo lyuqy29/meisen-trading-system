@@ -338,7 +338,8 @@ async function renderWatchlist() {
       <th>BIAS60</th><th>命中模型</th><th>判定</th><th>仓位上限</th><th></th></tr></thead><tbody>`;
     rows.forEach((r, i) => {
       if (r.error) {
-        html += `<tr><td>${i + 1}</td><td colspan="9" class="empty-note">${r.code} 读取失败：${cleanError(r.error)}</td><td></td></tr>`;
+        html += `<tr><td>${i + 1}</td><td colspan="9" class="empty-note">${r.code} 读取失败：${cleanError(r.error)}</td>
+          <td><button class="ghost" data-del="${r.code}" style="padding:4px 9px;font-size:11.5px">移除</button></td></tr>`;
         return;
       }
       const tcls = r.trend === '多头排列' ? 'bull' : r.trend === '空头排列' ? 'bear' : '';
@@ -356,6 +357,9 @@ async function renderWatchlist() {
         <td><button class="ghost" data-del="${r.code}" style="padding:4px 9px;font-size:11.5px">移除</button></td>
       </tr>`;
     });
+    if (d.truncated) {
+      html += `<tr><td colspan="11" class="empty-note">自选共 ${d.total} 只，本次只对比前 ${d.limit} 只</td></tr>`;
+    }
     html += '</tbody>';
     tbl.innerHTML = html;
     tbl.querySelectorAll('tr.row').forEach((tr) => {
