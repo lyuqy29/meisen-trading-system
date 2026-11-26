@@ -52,7 +52,8 @@ check("| 测试股 600000 | 回踩 | 10.00 | 20% |" in r["markdown"], "表格行
 check(Path(r["path"]).exists(), "计划文件未写入")
 Path(r["path"]).unlink(missing_ok=True)
 
-# 4) 手动计划 CRUD（脱网）
+# 4) 手动计划 CRUD（脱网，用临时文件）
+ms.MS_PLANS = "/tmp/_ms_plans_test.json"
 ms._save_plans([])
 item = ms.add_plan({"code": "600000", "kind": "回踩", "trigger": [10.0, 10.0], "weight": "15%", "stop": 9.4})
 check(item["code"] == "600000", "add_plan 代码不对")

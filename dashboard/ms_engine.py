@@ -460,6 +460,9 @@ def _plan_status(code: str, trig: tuple[float, float] | None, stop: float | None
         item["status"], item["tone"] = "条件单", "dim"
         return item
     lo, hi = trig
+    if stop and stop >= lo:
+        item["status"], item["tone"] = "止损设置无效（高于触发价）· 请重新生成", "bad"
+        return item
     if stop and s["close"] < stop:
         item["status"], item["tone"] = "已破止损 · 取消", "bad"
     elif lo == hi and s["close"] >= lo:
