@@ -322,10 +322,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(ms.add_review(body))
             except Exception as exc:  # noqa: BLE001
                 return self._err(user_error(exc), 400)
+        if u.path == "/api/ms/plan":
+            try:
+                body = self._read_json()
+                if body.get("action") == "del":
+                    return self._json(ms.del_plan(int(body.get("id") or 0)))
+                return self._json({"ok": True, "item": ms.add_plan(body)})
+            except Exception as exc:  # noqa: BLE001
+                return self._err(user_error(exc), 400)
         if u.path == "/api/ms/make-plan":
             try:
                 body = self._read_json()
-                return self._json({"ok": True, **ms.make_plan(
+                made = ms.make_plan(
                     str(body.get("code") or ""),
                     float(body.get("account") or 1_000_000),
                     float(body.get("weight") or 15),
@@ -333,7 +341,15 @@ class Handler(SimpleHTTPRequestHandler):
                     float(body["stop"]) if body.get("stop") else None,
                     str(body.get("kind") or "回踩"),
                     str(body.get("note") or ""),
-                )})
+                )
+                try:
+                    ms.add_plan({"code": made["row"]["code"], "kind": body.get("kind") or "回踩",
+                                 "trigger": made["row"]["trigger"], "stop": made["row"]["stop"],
+                                 "weight": f'{made["row"]["weight"]:g}%',
+                                 "note": f'由个股页生成 · {made["file"]}'})
+                except Exception:  # noqa: BLE001
+                    pass
+                return self._json({"ok": True, **made})
             except Exception as exc:  # noqa: BLE001
                 return self._err(user_error(exc), 400)
         if u.path not in ("/api/watchlist", "/api/positions"):

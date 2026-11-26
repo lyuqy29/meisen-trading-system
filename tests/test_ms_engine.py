@@ -52,7 +52,15 @@ check("| 测试股 600000 | 回踩 | 10.00 | 20% |" in r["markdown"], "表格行
 check(Path(r["path"]).exists(), "计划文件未写入")
 Path(r["path"]).unlink(missing_ok=True)
 
-# 4) 复盘统计（脱网）
+# 4) 手动计划 CRUD（脱网）
+ms._save_plans([])
+item = ms.add_plan({"code": "600000", "kind": "回踩", "trigger": [10.0, 10.0], "weight": "15%", "stop": 9.4})
+check(item["code"] == "600000", "add_plan 代码不对")
+check(len(ms._load_plans()) == 1, "计划未落库")
+ms.del_plan(item["id"])
+check(len(ms._load_plans()) == 0, "删除计划失败")
+
+# 5) 复盘统计（脱网）
 ms.REVIEWS = "/tmp/_ms_reviews_test.json"
 Path(ms.REVIEWS).write_text("[]", encoding="utf-8")
 ms.add_review({"code": "600000", "name": "A", "date": "2026-11-01", "pl_pct": 5,

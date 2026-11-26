@@ -318,6 +318,20 @@
     </section>
 
     <section class="msview" id="msview-plan">
+      <div class="card">
+        <h3>添加计划 <span class="tag">自行添加股票 · 实时校验触发</span></h3>
+        <div class="mscalc" style="margin-top:8px">
+          <label>代码<input id="plCode" placeholder="601985"></label>
+          <label>性质<select id="plKind"><option>回踩</option><option>双杀</option><option>当弱不弱</option>
+            <option>形态</option><option>抄底</option><option>条件单</option></select></label>
+          <label>触发价<input id="plTrigger" placeholder="10.05 或 116-118"></label>
+          <label>仓位 %<input id="plWeight" class="mono" value="15"></label>
+          <label>止损<input id="plStop" placeholder="可选"></label>
+          <label>备注<input id="plNote" placeholder="可选"></label>
+          <button class="primary" id="plAdd" style="align-self:flex-end">添加</button>
+        </div>
+        <div class="empty-note" style="margin-top:8px">同一代码重复添加会覆盖旧计划；也可以从 md 文件导入（下方表格会标注来源）。</div>
+      </div>
       <div id="msPlanBody"></div>
     </section>
 

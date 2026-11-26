@@ -44,6 +44,7 @@ _NAMES: dict[str, str] = {}
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SECTORS_CACHE = os.path.join(DATA, "ms_sectors.json")
 POSITIONS = os.path.join(DATA, "positions.json")
+MS_PLANS = os.path.join(DATA, "ms_plans.json")
 
 
 class DataError(RuntimeError):
@@ -434,254 +435,118 @@ def _parse_plan_file(path: str) -> list[dict]:
     return rows
 
 
-def plan() -> dict:
-    d = plans_dir()
-    if not d:
-        return {"ok": True, "file": None, "rows": [], "note": "未找到 plans/ 目录"}
-    files = sorted((f for f in os.listdir(d) if f.endswith(".md")), reverse=True)
-    if not files:
-        return {"ok": True, "file": None, "rows": [], "note": "plans/ 里还没有计划"}
-    path = os.path.join(d, files[0])
-    base = _parse_plan_file(path)
-    out = []
-    for r in base:
-        item = dict(r)
-        try:
-            s = stock(r["code"])
-            item.update({"name": s["name"] or r["name"], "close": s["close"],
-                         "state": s["state"], "dist_ma20": s["dist_ma20"]})
-            trig = r["trigger"]
-            if trig:
-                lo, hi = trig
-                if s["close"] < (r["stop"] or 0):
-                    item["status"], item["tone"] = "已破止损 · 取消", "bad"
-                elif lo == hi and s["close"] >= lo:
-                    item["status"], item["tone"] = "触发", "good"
-                elif lo != hi and lo <= s["close"] <= hi:
-                    item["status"], item["tone"] = "进入区间 · 可试仓", "good"
-                elif s["close"] > hi:
-                    item["status"], item["tone"] = "高于触发价 · 等回踩", "warn"
-                else:
-                    item["status"], item["tone"] = f"等待（差 {(lo / s['close'] - 1) * 100:+.1f}%）", "dim"
-            else:
-                item["status"], item["tone"] = "条件单", "dim"
-        except Exception as exc:  # noqa: BLE001
-            item.update({"error": f"{type(exc).__name__}", "status": "取数失败", "tone": "dim"})
-        out.append(item)
-    return {"ok": True, "file": files[0], "rows": out, "note": ""}
-
-
-# ---------------------------------------------------------------- 日内做T
-MIN = "https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={sym}"
-
-
-def _minute(sym: str) -> dict:
-    d = _get(MIN.format(sym=sym), "https://gu.qq.com/")
-    node = (d.get("data") or {}).get(sym) or {}
-    inner = node.get("data") or {}
-    rows = inner.get("data") or []
-    q = (node.get("qt") or {}).get(sym) or []
-    out = {"date": inner.get("date") or "", "name": q[1] if len(q) > 1 else sym,
-           "prev_close": float(q[4]) if len(q) > 4 else None,
-           "last": float(q[3]) if len(q) > 3 else None,
-           "points": [], "unit": 100.0}
-    # 腾讯分时：主板 cum_vol 单位是「手」，科创板/创业板是「股」——用首行反推
-    if rows:
-        f0 = rows[0].split()
-        if len(f0) >= 4:
-            p0, cv0, ca0 = float(f0[1]), float(f0[2]), float(f0[3])
-            if cv0 > 0 and p0 > 0 and (ca0 / cv0) / p0 < 10:
-                out["unit"] = 1.0
-    pv = pa = 0.0
-    for r in rows:
-        f = r.split()
-        if len(f) < 4:
-            continue
-        t, price, cv, ca = f[0], float(f[1]), float(f[2]), float(f[3])
-        vol, amt = max(cv - pv, 0.0), max(ca - pa, 0.0)
-        pv, pa = cv, ca
-        shares = cv * out["unit"]
-        out["points"].append({"t": t, "price": price, "vol": vol,
-                              "avg": round(ca / shares, 3) if shares else price})
-    return out
-
-
-def _position_of(code6: str) -> dict | None:
-    """从看板持仓表里找这只票（两套体系共用 data/positions.json）。"""
+# ---------------------------------------------------------------- 交易计划（手动添加 + md 导入）
+def _load_plans() -> list[dict]:
     try:
-        with open(POSITIONS, encoding="utf-8") as f:
+        with open(MS_PLANS, encoding="utf-8") as f:
             rows = json.load(f)
+        return rows if isinstance(rows, list) else []
     except (FileNotFoundError, json.JSONDecodeError):
-        return None
-    for r in rows if isinstance(rows, list) else []:
-        c = str(r.get("code", "")).strip().lower()
-        if c[2:] if c[:2] in ("sh", "sz", "bj") else c == code6:
-            return r
-    return None
+        return []
 
 
-def intraday(code: str) -> dict:
+def _save_plans(rows: list[dict]) -> None:
+    os.makedirs(DATA, exist_ok=True)
+    with open(MS_PLANS, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False, indent=2)
+
+
+def _plan_status(code: str, trig: tuple[float, float] | None, stop: float | None) -> dict:
+    """按实时价判定一条计划的状态（触发 / 等待 / 已破止损 / 等回踩）。"""
+    s = stock(code)
+    item = {"name": s["name"], "close": s["close"], "state": s["state"],
+            "dist_ma20": s["dist_ma20"]}
+    if not trig:
+        item["status"], item["tone"] = "条件单", "dim"
+        return item
+    lo, hi = trig
+    if stop and s["close"] < stop:
+        item["status"], item["tone"] = "已破止损 · 取消", "bad"
+    elif lo == hi and s["close"] >= lo:
+        item["status"], item["tone"] = "触发", "good"
+    elif lo != hi and lo <= s["close"] <= hi:
+        item["status"], item["tone"] = "进入区间 · 可试仓", "good"
+    elif s["close"] > hi:
+        item["status"], item["tone"] = "高于触发价 · 等回踩", "warn"
+    else:
+        item["status"], item["tone"] = f"等待（差 {(lo / s['close'] - 1) * 100:+.1f}%）", "dim"
+    return item
+
+
+def add_plan(body: dict) -> dict:
+    """手动添加一条计划（也供 F1 生成计划复用）。"""
+    code = str(body.get("code") or "").strip()
+    if not code:
+        raise DataError("缺少代码")
     sym = symbol_of(code)
-    key = f"min:{sym}"
+    code6 = sym[2:]
+    trig = body.get("trigger")
+    if isinstance(trig, (list, tuple)) and len(trig) == 2:
+        trig = (float(trig[0]), float(trig[1]))
+    elif trig not in (None, ""):
+        v = float(trig)
+        trig = (v, v)
+    else:
+        trig = None
+    item = {
+        "id": int(time.time() * 1000),
+        "code": code6,
+        "name": body.get("name") or _NAMES.get(sym) or code6,
+        "kind": body.get("kind") or "回踩",
+        "trigger": list(trig) if trig else None,
+        "weight": body.get("weight") or "",
+        "stop": float(body["stop"]) if body.get("stop") else None,
+        "note": body.get("note") or "",
+        "created": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    rows = _load_plans()
+    rows = [r for r in rows if r.get("code") != code6] + [item]   # 同票覆盖
+    _save_plans(rows)
+    return item
 
-    def build():
-        m = _minute(sym)
-        idx = _minute("sh000001")
-        pts = m["points"]
-        if not pts:
-            raise DataError("没有分时数据（可能未开盘）")
-        prev = m["prev_close"] or pts[0]["price"]
-        prices = [p["price"] for p in pts]
-        high, low = max(prices), min(prices)
-        amt = sum(p["vol"] * m.get("unit", 100.0) * p["price"] for p in pts)
-        amp = (high - low) / prev * 100 if prev else 0
 
-        # 大盘分时（按分钟对齐，换算成涨跌幅）
-        idx_map = {}
-        ip = idx["points"]
-        iprev = idx["prev_close"] or (ip[0]["price"] if ip else None)
-        for p in ip:
-            if iprev:
-                idx_map[p["t"]] = round((p["price"] / iprev - 1) * 100, 2)
+def del_plan(pid: int) -> dict:
+    rows = [r for r in _load_plans() if int(r.get("id") or 0) != int(pid)]
+    _save_plans(rows)
+    return {"ok": True, "left": len(rows)}
 
-        # 信号：急跌/急涨/均线穿越/偏离均价/大盘同步
-        sigs = []
-        vols = [p["vol"] for p in pts]
-        for i, p in enumerate(pts):
-            if i < 5:
-                continue   # 09:30 集合竞价 + 开盘前几分钟量比失真
-            base = pts[i - 1]["price"]
-            chg = (p["price"] / base - 1) * 100 if base else 0
-            win = vols[max(1, i - 20):i] or [1]
-            vmul = p["vol"] / (sum(win) / len(win)) if sum(win) else 0
-            it = idx_map.get(p["t"])
-            if chg <= -0.6 and vmul >= 1.8:
-                if it is not None and it <= -0.3:
-                    sigs.append({"t": p["t"], "kind": "急跌正T", "tone": "good", "price": p["price"],
-                                 "text": f"放量急跌 {chg:.1f}%（量 {vmul:.1f}×）+ 大盘同步 {it:+.1f}% → 正T买点候选"})
-                else:
-                    sigs.append({"t": p["t"], "kind": "独立杀跌", "tone": "bad", "price": p["price"],
-                                 "text": f"个股独立急跌 {chg:.1f}%（大盘 {it if it is not None else 0:+.1f}%）→ 不做多T"})
-            if chg >= 0.6 and vmul >= 1.8:
-                sigs.append({"t": p["t"], "kind": "急涨T出", "tone": "warn", "price": p["price"],
-                             "text": f"放量急涨 {chg:+.1f}%（量 {vmul:.1f}×）→ T 卖出参考"})
-            if i and p["avg"]:
-                a0, a1 = pts[i - 1]["avg"], p["avg"]
-                dev1 = (p["price"] / a1 - 1) * 100 if a1 else 0
-                if abs(dev1) >= 0.3:   # 过滤贴着均价来回抖的假信号
-                    if pts[i - 1]["price"] <= a0 and p["price"] > a1:
-                        sigs.append({"t": p["t"], "kind": "上穿均价", "tone": "good", "price": p["price"],
-                                     "text": f"上穿分时均价（+{dev1:.1f}%）→ 转强"})
-                    elif pts[i - 1]["price"] >= a0 and p["price"] < a1:
-                        sigs.append({"t": p["t"], "kind": "下穿均价", "tone": "warn", "price": p["price"],
-                                     "text": f"下穿分时均价（{dev1:.1f}%）→ 转弱"})
-            if p["avg"]:
-                dev = (p["price"] / p["avg"] - 1) * 100
-                if dev >= 1.5:
-                    sigs.append({"t": p["t"], "kind": "偏离均价", "tone": "warn", "price": p["price"],
-                                 "text": f"高于均价 {dev:+.1f}% → T 出参考"})
-                elif dev <= -1.5:
-                    sigs.append({"t": p["t"], "kind": "低于均价", "tone": "good", "price": p["price"],
-                                 "text": f"低于均价 {dev:.1f}% → 回补参考"})
 
-        # 当日最强 T 机会（按 |涨跌| × 量能倍数 排序，间隔 20 分钟去重）
-        cand = []
-        for i, p in enumerate(pts):
-            if i < 5:
-                continue   # 09:30 集合竞价 + 开盘前几分钟量比失真
-            base = pts[i - 1]["price"]
-            chg = (p["price"] / base - 1) * 100 if base else 0
-            win = vols[max(1, i - 20):i] or [1]
-            vmul = p["vol"] / (sum(win) / len(win)) if sum(win) else 0
-            if vmul <= 0:
-                continue
-            cand.append({"t": p["t"], "price": p["price"], "chg": round(chg, 2),
-                         "vmul": round(vmul, 1), "index_pct": idx_map.get(p["t"]),
-                         "score": abs(chg) * min(vmul, 6), "dir": "up" if chg > 0 else "down"})
-        cand.sort(key=lambda x: x["score"], reverse=True)
-        top, used = [], []
-        for c in cand:
-            if any(abs(int(c["t"]) - int(u)) < 20 for u in used):
-                continue
-            used.append(c["t"])
-            top.append(c)
-            if len(top) >= 3:
-                break
-        top.sort(key=lambda x: x["t"])
-
-        # 去重：同类信号 10 分钟内只留第一个
-        dedup, last = [], {}
-        for s in sigs:
-            gap = 20 if "均价" in s["kind"] else 10
-            if s["kind"] in last and int(s["t"]) - last[s["kind"]] < gap:
-                continue
-            last[s["kind"]] = int(s["t"])
-            dedup.append(s)
-
-        # 适合度（11-intraday.md：波动 + 成交 + 趋势）
+def plan() -> dict:
+    """计划 = 手动添加（data/ms_plans.json）+ plans/*.md 导入（同代码以手动为准）。"""
+    out = []
+    for it in _load_plans():
+        item = {"code": it.get("code"), "name": it.get("name"), "kind": it.get("kind"),
+                "trigger": it.get("trigger"), "weight": it.get("weight"),
+                "stop": it.get("stop"), "note": it.get("note"),
+                "id": it.get("id"), "source": "手动", "created": it.get("created")}
+        trig = tuple(item["trigger"]) if item["trigger"] else None
+        item["trigger_text"] = (f"{trig[0]:g}–{trig[1]:g}" if trig and trig[0] != trig[1]
+                                else f"{trig[0]:g}" if trig else "—")
         try:
-            st = stock(code)
-            state, d20 = st["state"], st["dist_ma20"]
-        except Exception:  # noqa: BLE001
-            state, d20 = "—", None
-        amount_yi = round(amt / 1e8, 2)
-        tags = []
-        if amp >= 2:
-            tags.append(f"振幅 {amp:.1f}% 够做T")
-        else:
-            tags.append(f"振幅仅 {amp:.1f}%，做T空间不足")
-        if amount_yi >= 3:
-            tags.append(f"成交 {amount_yi} 亿，量能充足")
-        else:
-            tags.append(f"成交 {amount_yi} 亿，量能偏弱")
-        if state == "多头排列":
-            tags.append("日线多头，适合正T")
-        elif state == "空头排列":
-            tags.append("日线空头，不做多T")
-        else:
-            tags.append(f"日线{state}，只做小仓T")
-        score = (1 if amp >= 2 else 0) + (1 if amount_yi >= 3 else 0) + (1 if state == "多头排列" else 0)
+            item.update(_plan_status(item["code"], trig, item["stop"]))
+        except Exception as exc:  # noqa: BLE001
+            item.update({"status": "取数失败", "tone": "dim", "error": type(exc).__name__})
+        out.append(item)
 
-        # 早盘双杀（做T式加仓前置）
-        morning = [p for p in pts if "0930" <= p["t"] <= "1000"]
-        m_low = min((p["price"] for p in morning), default=None)
-        early = None
-        if m_low and prev:
-            early_chg = (m_low / prev - 1) * 100
-            i_low = min((v for k, v in idx_map.items() if "0930" <= k <= "1000"), default=None)
-            early = {"stock_pct": round(early_chg, 2), "index_pct": i_low,
-                     "ok": bool(early_chg <= -0.5 and (i_low is not None and i_low <= -0.5))}
+    md_file = None
+    d = plans_dir()
+    if d:
+        files = sorted((f for f in os.listdir(d) if f.endswith(".md")), reverse=True)
+        if files:
+            md_file = files[0]
+            have = {x["code"] for x in out}
+            for r in _parse_plan_file(os.path.join(d, md_file)):
+                if r["code"] in have:
+                    continue
+                item = dict(r, source="plans 文件")
+                try:
+                    item.update(_plan_status(r["code"], r.get("trigger"), r.get("stop")))
+                except Exception:  # noqa: BLE001
+                    item.update({"status": "取数失败", "tone": "dim"})
+                out.append(item)
 
-        pos = _position_of(sym[2:])
-        position = None
-        if pos:
-            try:
-                cost = float(pos.get("cost") or 0)
-                shares = float(pos.get("shares") or 0) if pos.get("shares") else 0
-                stop = float(pos.get("entry_stop") or cost * 0.88)
-                position = {
-                    "cost": round(cost, 3), "shares": int(shares), "weight": pos.get("weight"),
-                    "entry_stop": round(stop, 2), "opened_at": pos.get("opened_at"),
-                    "entry_model": pos.get("entry_model"),
-                    "pl_pct": round((pts[-1]["price"] / cost - 1) * 100, 2) if cost else None,
-                    "dist_stop": round((stop / pts[-1]["price"] - 1) * 100, 2) if stop else None,
-                }
-            except (TypeError, ValueError):
-                position = None
-
-        return {
-            "code": sym[2:], "name": m["name"], "date": m["date"], "prev_close": prev,
-            "position": position,
-            "last": pts[-1]["price"], "chg": round((pts[-1]["price"] / prev - 1) * 100, 2) if prev else 0,
-            "high": high, "low": low, "amp": round(amp, 2), "amount_yi": amount_yi,
-            "state": state, "dist_ma20": d20, "score": score, "tags": tags,
-            "early": early,
-            "topT": top,
-            "range_pos": round((pts[-1]["price"] - low) / (high - low) * 100, 0) if high > low else 50,
-            "points": pts[:600], "index": [{"t": k, "pct": v} for k, v in list(idx_map.items())[:600]],
-            "signals": dedup[-40:],
-        }
-    return _cached(key, build, ttl=60)
+    note = "" if out else "还没有计划：点上面的「添加计划」手动加一只，或在个股页用「生成交易计划」"
+    return {"ok": True, "file": md_file, "rows": out, "note": note}
 
 
 # ---------------------------------------------------------------- 复盘（A1/A2）
@@ -907,6 +772,7 @@ def superexpect(code: str, date: str) -> dict:
 def make_plan(code: str, account: float = 1_000_000, weight: float = 15,
               trigger: float | None = None, stop: float | None = None,
               kind: str = "回踩", note: str = "") -> dict:
+    """按体系生成一份 md 计划（F1），并落到 plans/ 目录。"""
     s = stock(code)
     trigger = float(trigger or s["close"])
     stop = float(stop or s["stop"])
@@ -922,7 +788,7 @@ def make_plan(code: str, account: float = 1_000_000, weight: float = 15,
         f"# 交易计划 · {day} · {s['name']}（{s['code']}）", "",
         "> 由看板按梅森体系自动生成，口径见 `references/07-buy-points.md`、`04-stop-loss.md`。", "",
         "## 一、位置判断", "",
-        f"- 均线三态：{s['state']}；距 MA20：{s['dist_ma20']}%；日内区间：{s['low20']}–{s['high20']}",
+        f"- 均线三态：{s['state']}；距 MA20：{s['dist_ma20']}%；20 日区间：{s['low20']}–{s['high20']}",
         f"- 买点判定：{s['zone']}",
         f"- 命中信号：{'、'.join(s['signals']) if s['signals'] else '无（当前不满足体系买点）'}", "",
         "## 二、交易计划", "",
