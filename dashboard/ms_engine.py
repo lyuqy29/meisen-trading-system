@@ -621,6 +621,219 @@ def plan() -> dict:
     return {"ok": True, "file": md_file, "rows": out, "note": note}
 
 
+# ---------------------------------------------------------------- 日内做T
+MIN = "https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={sym}"
+
+
+def _minute(sym: str) -> dict:
+    d = _get(MIN.format(sym=sym), "https://gu.qq.com/")
+    node = (d.get("data") or {}).get(sym) or {}
+    inner = node.get("data") or {}
+    rows = inner.get("data") or []
+    q = (node.get("qt") or {}).get(sym) or []
+    out = {"date": inner.get("date") or "", "name": q[1] if len(q) > 1 else sym,
+           "prev_close": float(q[4]) if len(q) > 4 else None,
+           "last": float(q[3]) if len(q) > 3 else None,
+           "points": [], "unit": 100.0}
+    # 腾讯分时：主板 cum_vol 单位是「手」，科创板/创业板是「股」——用首行反推
+    if rows:
+        f0 = rows[0].split()
+        if len(f0) >= 4:
+            p0, cv0, ca0 = float(f0[1]), float(f0[2]), float(f0[3])
+            if cv0 > 0 and p0 > 0 and (ca0 / cv0) / p0 < 10:
+                out["unit"] = 1.0
+    pv = pa = 0.0
+    for r in rows:
+        f = r.split()
+        if len(f) < 4:
+            continue
+        t, price, cv, ca = f[0], float(f[1]), float(f[2]), float(f[3])
+        vol, amt = max(cv - pv, 0.0), max(ca - pa, 0.0)
+        pv, pa = cv, ca
+        shares = cv * out["unit"]
+        out["points"].append({"t": t, "price": price, "vol": vol,
+                              "avg": round(ca / shares, 3) if shares else price})
+    return out
+
+
+def _position_of(code6: str) -> dict | None:
+    """从看板持仓表里找这只票（两套体系共用 data/positions.json）。"""
+    try:
+        with open(POSITIONS, encoding="utf-8") as f:
+            rows = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    for r in rows if isinstance(rows, list) else []:
+        c = str(r.get("code", "")).strip().lower()
+        if c[2:] if c[:2] in ("sh", "sz", "bj") else c == code6:
+            return r
+    return None
+
+
+def intraday(code: str) -> dict:
+    sym = symbol_of(code)
+    key = f"min:{sym}"
+
+    def build():
+        m = _minute(sym)
+        idx = _minute("sh000001")
+        pts = m["points"]
+        if not pts:
+            raise DataError("没有分时数据（可能未开盘）")
+        prev = m["prev_close"] or pts[0]["price"]
+        prices = [p["price"] for p in pts]
+        high, low = max(prices), min(prices)
+        amt = sum(p["vol"] * m.get("unit", 100.0) * p["price"] for p in pts)
+        amp = (high - low) / prev * 100 if prev else 0
+
+        # 大盘分时（按分钟对齐，换算成涨跌幅）
+        idx_map = {}
+        ip = idx["points"]
+        iprev = idx["prev_close"] or (ip[0]["price"] if ip else None)
+        for p in ip:
+            if iprev:
+                idx_map[p["t"]] = round((p["price"] / iprev - 1) * 100, 2)
+
+        # 信号：急跌/急涨/均线穿越/偏离均价/大盘同步
+        sigs = []
+        vols = [p["vol"] for p in pts]
+        for i, p in enumerate(pts):
+            if i < 5:
+                continue   # 09:30 集合竞价 + 开盘前几分钟量比失真
+            base = pts[i - 1]["price"]
+            chg = (p["price"] / base - 1) * 100 if base else 0
+            win = vols[max(1, i - 20):i] or [1]
+            vmul = p["vol"] / (sum(win) / len(win)) if sum(win) else 0
+            it = idx_map.get(p["t"])
+            if chg <= -0.6 and vmul >= 1.8:
+                if it is not None and it <= -0.3:
+                    sigs.append({"t": p["t"], "kind": "急跌正T", "tone": "good", "price": p["price"],
+                                 "text": f"放量急跌 {chg:.1f}%（量 {vmul:.1f}×）+ 大盘同步 {it:+.1f}% → 正T买点候选"})
+                else:
+                    sigs.append({"t": p["t"], "kind": "独立杀跌", "tone": "bad", "price": p["price"],
+                                 "text": f"个股独立急跌 {chg:.1f}%（大盘 {it if it is not None else 0:+.1f}%）→ 不做多T"})
+            if chg >= 0.6 and vmul >= 1.8:
+                sigs.append({"t": p["t"], "kind": "急涨T出", "tone": "warn", "price": p["price"],
+                             "text": f"放量急涨 {chg:+.1f}%（量 {vmul:.1f}×）→ T 卖出参考"})
+            if i and p["avg"]:
+                a0, a1 = pts[i - 1]["avg"], p["avg"]
+                dev1 = (p["price"] / a1 - 1) * 100 if a1 else 0
+                if abs(dev1) >= 0.3:   # 过滤贴着均价来回抖的假信号
+                    if pts[i - 1]["price"] <= a0 and p["price"] > a1:
+                        sigs.append({"t": p["t"], "kind": "上穿均价", "tone": "good", "price": p["price"],
+                                     "text": f"上穿分时均价（+{dev1:.1f}%）→ 转强"})
+                    elif pts[i - 1]["price"] >= a0 and p["price"] < a1:
+                        sigs.append({"t": p["t"], "kind": "下穿均价", "tone": "warn", "price": p["price"],
+                                     "text": f"下穿分时均价（{dev1:.1f}%）→ 转弱"})
+            if p["avg"]:
+                dev = (p["price"] / p["avg"] - 1) * 100
+                if dev >= 1.5:
+                    sigs.append({"t": p["t"], "kind": "偏离均价", "tone": "warn", "price": p["price"],
+                                 "text": f"高于均价 {dev:+.1f}% → T 出参考"})
+                elif dev <= -1.5:
+                    sigs.append({"t": p["t"], "kind": "低于均价", "tone": "good", "price": p["price"],
+                                 "text": f"低于均价 {dev:.1f}% → 回补参考"})
+
+        # 当日最强 T 机会（按 |涨跌| × 量能倍数 排序，间隔 20 分钟去重）
+        cand = []
+        for i, p in enumerate(pts):
+            if i < 5:
+                continue   # 09:30 集合竞价 + 开盘前几分钟量比失真
+            base = pts[i - 1]["price"]
+            chg = (p["price"] / base - 1) * 100 if base else 0
+            win = vols[max(1, i - 20):i] or [1]
+            vmul = p["vol"] / (sum(win) / len(win)) if sum(win) else 0
+            if vmul <= 0:
+                continue
+            cand.append({"t": p["t"], "price": p["price"], "chg": round(chg, 2),
+                         "vmul": round(vmul, 1), "index_pct": idx_map.get(p["t"]),
+                         "score": abs(chg) * min(vmul, 6), "dir": "up" if chg > 0 else "down"})
+        cand.sort(key=lambda x: x["score"], reverse=True)
+        top, used = [], []
+        for c in cand:
+            if any(abs(int(c["t"]) - int(u)) < 20 for u in used):
+                continue
+            used.append(c["t"])
+            top.append(c)
+            if len(top) >= 3:
+                break
+        top.sort(key=lambda x: x["t"])
+
+        # 去重：同类信号 10 分钟内只留第一个
+        dedup, last = [], {}
+        for s in sigs:
+            gap = 20 if "均价" in s["kind"] else 10
+            if s["kind"] in last and int(s["t"]) - last[s["kind"]] < gap:
+                continue
+            last[s["kind"]] = int(s["t"])
+            dedup.append(s)
+
+        # 适合度（11-intraday.md：波动 + 成交 + 趋势）
+        try:
+            st = stock(code)
+            state, d20 = st["state"], st["dist_ma20"]
+        except Exception:  # noqa: BLE001
+            state, d20 = "—", None
+        amount_yi = round(amt / 1e8, 2)
+        tags = []
+        if amp >= 2:
+            tags.append(f"振幅 {amp:.1f}% 够做T")
+        else:
+            tags.append(f"振幅仅 {amp:.1f}%，做T空间不足")
+        if amount_yi >= 3:
+            tags.append(f"成交 {amount_yi} 亿，量能充足")
+        else:
+            tags.append(f"成交 {amount_yi} 亿，量能偏弱")
+        if state == "多头排列":
+            tags.append("日线多头，适合正T")
+        elif state == "空头排列":
+            tags.append("日线空头，不做多T")
+        else:
+            tags.append(f"日线{state}，只做小仓T")
+        score = (1 if amp >= 2 else 0) + (1 if amount_yi >= 3 else 0) + (1 if state == "多头排列" else 0)
+
+        # 早盘双杀（做T式加仓前置）
+        morning = [p for p in pts if "0930" <= p["t"] <= "1000"]
+        m_low = min((p["price"] for p in morning), default=None)
+        early = None
+        if m_low and prev:
+            early_chg = (m_low / prev - 1) * 100
+            i_low = min((v for k, v in idx_map.items() if "0930" <= k <= "1000"), default=None)
+            early = {"stock_pct": round(early_chg, 2), "index_pct": i_low,
+                     "ok": bool(early_chg <= -0.5 and (i_low is not None and i_low <= -0.5))}
+
+        pos = _position_of(sym[2:])
+        position = None
+        if pos:
+            try:
+                cost = float(pos.get("cost") or 0)
+                shares = float(pos.get("shares") or 0) if pos.get("shares") else 0
+                stop = float(pos.get("entry_stop") or cost * 0.88)
+                position = {
+                    "cost": round(cost, 3), "shares": int(shares), "weight": pos.get("weight"),
+                    "entry_stop": round(stop, 2), "opened_at": pos.get("opened_at"),
+                    "entry_model": pos.get("entry_model"),
+                    "pl_pct": round((pts[-1]["price"] / cost - 1) * 100, 2) if cost else None,
+                    "dist_stop": round((stop / pts[-1]["price"] - 1) * 100, 2) if stop else None,
+                }
+            except (TypeError, ValueError):
+                position = None
+
+        return {
+            "code": sym[2:], "name": m["name"], "date": m["date"], "prev_close": prev,
+            "position": position,
+            "last": pts[-1]["price"], "chg": round((pts[-1]["price"] / prev - 1) * 100, 2) if prev else 0,
+            "high": high, "low": low, "amp": round(amp, 2), "amount_yi": amount_yi,
+            "state": state, "dist_ma20": d20, "score": score, "tags": tags,
+            "early": early,
+            "topT": top,
+            "range_pos": round((pts[-1]["price"] - low) / (high - low) * 100, 0) if high > low else 50,
+            "points": pts[:600], "index": [{"t": k, "pct": v} for k, v in list(idx_map.items())[:600]],
+            "signals": dedup[-40:],
+        }
+    return _cached(key, build, ttl=60)
+
+
 # ---------------------------------------------------------------- 复盘（A1/A2）
 REVIEWS = os.path.join(DATA, "reviews.json")
 TAGS = ["时机-追高", "时机-逆势", "位置-接刀", "纪律-不止损",

@@ -29,6 +29,10 @@ def synth(n: int, start: float, step: float, vol: float = 1e6) -> list[dict]:
     return rows
 
 
+# 0) 关键函数齐全（防止再次被整段截断）
+for fn in ("intraday", "plan", "reviews", "sentiment", "top_signal", "bottom_scan", "superexpect", "make_plan", "add_plan", "update_plan", "del_plan_md"):
+    check(hasattr(ms, fn), f"ms_engine 缺少函数 {fn}")
+
 # 1) 均线三态
 check(ms.ma_state([r["close"] for r in synth(30, 10, 0.2)]) == "多头排列", "上涨序列应为多头排列")
 check(ms.ma_state([r["close"] for r in synth(30, 20, -0.2)]) == "空头排列", "下跌序列应为空头排列")

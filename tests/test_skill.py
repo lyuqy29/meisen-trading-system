@@ -76,6 +76,12 @@ def main() -> int:
         for bad in ("TODO", "待补充", "待定", "XXX"):
             check(bad not in body, f"{p.name} 残留占位符: {bad}")
 
+    # 4b. 前端关键函数存在（防止整段被误删）
+    msjs = (ROOT / "dashboard" / "web" / "ms.js").read_text(encoding="utf-8")
+    for fn in ("analyzeIntraday", "drawIntraday", "renderIntraday", "posHtml",
+               "renderPlan", "addPlanFromForm", "drawSpark", "renderChecklist"):
+        check(f"function {fn}(" in msjs, f"web/ms.js 缺少函数 {fn}")
+
     # 5. assets
     for name in ("cheatsheet.md", "trade-plan.md", "position-sheet.md", "review.md"):
         check((ROOT / "assets" / name).exists(), f"缺少 assets/{name}")
