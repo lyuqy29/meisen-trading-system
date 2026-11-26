@@ -89,8 +89,10 @@ http://127.0.0.1:8777/?tab=positions               # 量价时空：持仓管理
 `web/ms.js` 顶部：
 
 ```js
-const FEATURES = { plan: false };   // 交易计划：false = 关闭
+const FEATURES = { plan: false, news: false };   // false = 关闭该页
 ```
+
+当前关闭：`plan`（交易计划）、`news`（消息）。改回 `true` 并刷新即恢复。
 
 关闭时隐藏：顶部「交易计划」页签、个股页「按体系生成交易计划」卡片；
 `?view=plan` 深链会自动回落到「大盘时机」。

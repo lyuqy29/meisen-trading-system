@@ -11,9 +11,9 @@
 
   const LF_TAB_KEY = 'lf_last_tab';
   // 功能开关：false = 隐藏该页签与该页相关入口（代码保留，改回 true 即恢复）
-  const FEATURES = { plan: false };
+  const FEATURES = { plan: false, news: false };   // false = 隐藏该页签（代码保留）
 
-  const BUILD = '1126-2339';
+  const BUILD = '1126-2349';
   const ST = { view: 'timing', ov: null, sec: null, plan: null, stock: null, code: localStorage.getItem('ms_code') || '601985' };
 
   async function api(path, opts) {
@@ -56,19 +56,24 @@
     }
   }
 
+  function isDisabled(view) { return FEATURES[view] === false; }
+
   function applyFeatures() {
-    if (!FEATURES.plan) {
-      const nav = document.querySelector('#msTabs button[data-ms="plan"]');
+    Object.keys(FEATURES).forEach((v) => {
+      if (FEATURES[v]) return;
+      const nav = document.querySelector(`#msTabs button[data-ms="${v}"]`);
       if (nav) nav.classList.add('hidden');
-      const view = $('msview-plan');
-      if (view) view.classList.add('hidden');
+      const sec = document.getElementById('msview-' + v);
+      if (sec) sec.classList.add('hidden');
+    });
+    if (!FEATURES.plan) {
       const card = $('msMakePlanCard');
       if (card) card.classList.add('hidden');
     }
   }
 
   function showMs(view) {
-    if (view === 'plan' && !FEATURES.plan) view = 'timing';   // 深链兜底
+    if (isDisabled(view)) view = 'timing';   // 深链兜底（plan / news 等被关掉的页）
     ST.view = view;
     document.querySelectorAll('#msTabs button').forEach((b) => b.classList.toggle('active', b.dataset.ms === view));
     document.querySelectorAll('.msview').forEach((s) => s.classList.toggle('active', s.id === 'msview-' + view));
