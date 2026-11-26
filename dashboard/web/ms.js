@@ -10,7 +10,10 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   const LF_TAB_KEY = 'lf_last_tab';
-  const BUILD = '1126-2333';
+  // 功能开关：false = 隐藏该页签与该页相关入口（代码保留，改回 true 即恢复）
+  const FEATURES = { plan: false };
+
+  const BUILD = '1126-2339';
   const ST = { view: 'timing', ov: null, sec: null, plan: null, stock: null, code: localStorage.getItem('ms_code') || '601985' };
 
   async function api(path, opts) {
@@ -53,12 +56,24 @@
     }
   }
 
+  function applyFeatures() {
+    if (!FEATURES.plan) {
+      const nav = document.querySelector('#msTabs button[data-ms="plan"]');
+      if (nav) nav.classList.add('hidden');
+      const view = $('msview-plan');
+      if (view) view.classList.add('hidden');
+      const card = $('msMakePlanCard');
+      if (card) card.classList.add('hidden');
+    }
+  }
+
   function showMs(view) {
+    if (view === 'plan' && !FEATURES.plan) view = 'timing';   // 深链兜底
     ST.view = view;
     document.querySelectorAll('#msTabs button').forEach((b) => b.classList.toggle('active', b.dataset.ms === view));
     document.querySelectorAll('.msview').forEach((s) => s.classList.toggle('active', s.id === 'msview-' + view));
     if (view === 'sectors' && !ST.sec) loadSectors();
-    if (view === 'plan' && !ST.plan) loadPlan();
+    if (view === 'plan' && FEATURES.plan && !ST.plan) loadPlan();
     if (view === 'intraday' && !ST.min) analyzeIntraday(ST.code);
     if (window.MSOnView) { try { window.MSOnView(view); } catch (e) { /* noop */ } }
     if (view === 'timing' && !ST.ov) loadOverview();
@@ -448,6 +463,7 @@
     $('plAdd').addEventListener('click', addPlanFromForm);
     $('msTCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('msTGo').click(); });
     renderChecklist();
+    applyFeatures();
     const qp = new URLSearchParams(location.search);
     const sys = qp.get('sys') || localStorage.getItem('ms_sys');
     const view = qp.get('view');

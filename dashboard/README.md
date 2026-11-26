@@ -84,6 +84,19 @@ http://127.0.0.1:8777/?tab=positions               # 量价时空：持仓管理
 | 涨停/跌停池 | 东财 `push2ex` | `tc`=家数、`lbc`=连板；涨跌家数接口不可用，温度用指数涨跌+涨跌停家数+最高板合成 |
 | 日K 兜底 | 腾讯 ifzq → 新浪 → 腾讯 proxy | 单源被限流（HTTP 501/超时）时自动切换 |
 
+## 功能开关
+
+`web/ms.js` 顶部：
+
+```js
+const FEATURES = { plan: false };   // 交易计划：false = 关闭
+```
+
+关闭时隐藏：顶部「交易计划」页签、个股页「按体系生成交易计划」卡片；
+`?view=plan` 深链会自动回落到「大盘时机」。
+
+**数据不受影响**：`data/ms_plans.json` 与 `plans/*.md` 都还在，改回 `true` 即恢复原样。
+
 ## 做T怎么和持仓打通
 
 `ms_engine.intraday()` 会读同一份 `data/positions.json`（与量价时空的持仓管理共用）：
