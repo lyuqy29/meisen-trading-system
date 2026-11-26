@@ -488,6 +488,9 @@ def add_plan(body: dict) -> dict:
         trig = (v, v)
     else:
         trig = None
+    stop = float(body["stop"]) if body.get("stop") else None
+    if trig and stop and stop >= trig[0]:
+        stop = round(trig[0] * 0.92, 2)   # 止损高于触发价没有意义，按 -8% 修正
     item = {
         "id": int(time.time() * 1000),
         "code": code6,
@@ -495,7 +498,7 @@ def add_plan(body: dict) -> dict:
         "kind": body.get("kind") or "回踩",
         "trigger": list(trig) if trig else None,
         "weight": body.get("weight") or "",
-        "stop": float(body["stop"]) if body.get("stop") else None,
+        "stop": stop,
         "note": body.get("note") or "",
         "created": time.strftime("%Y-%m-%d %H:%M"),
     }
@@ -776,6 +779,11 @@ def make_plan(code: str, account: float = 1_000_000, weight: float = 15,
     s = stock(code)
     trigger = float(trigger or s["close"])
     stop = float(stop or s["stop"])
+    fixed = ""
+    if stop >= trigger:      # 止损不能高于触发价（常见于已跌破 MA20 的票）
+        stop = round(min(trigger * 0.92, s["stop_line"] or trigger * 0.92), 2)
+        fixed = "（原止损高于触发价，已按 -8% 修正）"
+        note = (note + " " + fixed).strip()
     shares = int(account * weight / 100 / trigger / 100) * 100
     loss = round((trigger - stop) * shares, 0)
     dd = plans_dir()
