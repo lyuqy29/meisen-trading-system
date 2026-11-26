@@ -2,7 +2,9 @@
 """ms_engine 离线单测（不联网）：用合成 K 线验证判定口径与计划生成。"""
 from __future__ import annotations
 
+import pathlib
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +62,18 @@ check(item["code"] == "600000", "add_plan 代码不对")
 check(len(ms._load_plans()) == 1, "计划未落库")
 ms.del_plan(item["id"])
 check(len(ms._load_plans()) == 0, "删除计划失败")
+
+# 4b) md 计划行删除（脱网）
+tmpd = pathlib.Path(tempfile.mkdtemp())
+(tmpd / "p.md").write_text(
+    "| 标的 | 性质 | 触发价 | 仓位 | 金额 | 止损位 | 最大亏损 | 占账户 |\n"
+    "|---|---|---|---|---|---|---|---|\n"
+    "| 测试 600000 | 回踩 | 10.00 | 15% | 15.0 万 | 9.40 | 900 元 | -1.5% |\n",
+    encoding="utf-8")
+ms.plans_dir = lambda: str(tmpd)  # type: ignore[assignment]
+r = ms.del_plan_md("600000")
+check(r["removed"] == 1, "md 行未删除")
+check(r["deleted_file"] is True, "删完最后一行应把文件删掉")
 
 # 5) 复盘统计（脱网）
 ms.REVIEWS = "/tmp/_ms_reviews_test.json"

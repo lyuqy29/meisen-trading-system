@@ -337,8 +337,11 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/api/ms/plan":
             try:
                 body = self._read_json()
-                if body.get("action") == "del":
+                action = body.get("action")
+                if action == "del":
                     return self._json(ms.del_plan(int(body.get("id") or 0)))
+                if action == "del-md":
+                    return self._json(ms.del_plan_md(str(body.get("code") or "")))
                 return self._json({"ok": True, "item": ms.add_plan(body)})
             except Exception as exc:  # noqa: BLE001
                 return self._err(user_error(exc), 400)

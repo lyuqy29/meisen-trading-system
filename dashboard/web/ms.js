@@ -289,7 +289,7 @@
         <td class="mono">${fmt(r.stop)}</td>
         <td><span class="pill ${t}">${esc(r.status || '—')}</span></td>
         <td class="empty-note">${esc(r.source || '')}</td>
-        <td>${r.id ? `<button class="ghost" data-pland="${r.id}">删</button>` : ''}</td>
+        <td><button class="ghost" data-plan-del="${r.id || ''}" data-plan-code="${esc(r.code)}">删</button></td>
       </tr>`;
     }
     html += `</tbody></table>
@@ -300,11 +300,16 @@
       <div style="margin-top:10px"><button class="ghost" id="msRefreshPlan">刷新</button></div></div>`;
     $('msPlanBody').innerHTML = html;
     $('msRefreshPlan').addEventListener('click', () => { ST.plan = null; loadPlan(); });
-    $('msPlanBody').querySelectorAll('button[data-pland]').forEach((b) => b.addEventListener('click', async () => {
+    $('msPlanBody').querySelectorAll('button[data-plan-del]').forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset.planDel;
+      const code = b.dataset.planCode;
+      if (!confirm(`删除 ${code} 这条计划？`)) return;
       try {
-        await api('/api/ms/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'del', id: Number(b.dataset.pland) }) });
+        const body = id ? { action: 'del', id: Number(id) } : { action: 'del-md', code };
+        const r = await api('/api/ms/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body) });
         ST.plan = null; loadPlan();
+        toast(r.deleted_file ? `已删除 ${code}，md 文件已空并移除` : `已删除 ${code}`);
       } catch (e) { toast('删除失败：' + e.message); }
     }));
   }

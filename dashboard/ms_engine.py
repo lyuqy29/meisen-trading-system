@@ -517,6 +517,35 @@ def del_plan(pid: int) -> dict:
     return {"ok": True, "left": len(rows)}
 
 
+def del_plan_md(code6: str) -> dict:
+    """从最新 plans/*.md 的表格里删掉这只票（删完没行就删文件）。"""
+    d = plans_dir()
+    if not d:
+        raise DataError("找不到 plans/ 目录")
+    files = sorted((f for f in os.listdir(d) if f.endswith(".md")), reverse=True)
+    if not files:
+        raise DataError("plans/ 里没有计划文件")
+    path = os.path.join(d, files[0])
+    kept, removed = [], 0
+    for line in open(path, encoding="utf-8").read().splitlines(True):
+        s = line.strip()
+        if s.startswith("|") and code6 in s and ("%" in s or "元" in s):
+            removed += 1
+            continue
+        kept.append(line)
+    if not removed:
+        raise DataError("这条计划不在 md 文件里（可能已被删过）")
+    body = "".join(kept)
+    rows_left = [l for l in kept if l.strip().startswith("|") and l.strip().startswith("| ")
+                 and "标的" not in l and "---" not in l]
+    if rows_left:
+        open(path, "w", encoding="utf-8").write(body)
+    else:
+        os.remove(path)          # 表里已经没有股票，文件一起删掉
+    return {"ok": True, "removed": removed, "file": files[0],
+            "left": len(rows_left), "deleted_file": not rows_left}
+
+
 def plan() -> dict:
     """计划 = 手动添加（data/ms_plans.json）+ plans/*.md 导入（同代码以手动为准）。"""
     out = []
